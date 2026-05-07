@@ -329,6 +329,7 @@ def draw_virtual_court(frame, projMtx):
 class Kalman3D:
     def __init__(self, dt = 1/30, process_noise = 0.001, measurement_noise = 0.5):
         self.initialized = False
+        self.frame_count = 0
         self.x = np.zeros((6, 1), dtype=np.float32)  # [x,y,z,vx,vy,vz]
 
         self.F = np.array([
@@ -358,7 +359,7 @@ class Kalman3D:
         return self.x[:3].flatten()
 
     def update(self, z):
-        z = np.asarray(z, dtype=np.float32).reshape(3,1)
+        '''z = np.asarray(z, dtype=np.float32).reshape(3,1)
         if np.any(np.isnan(z)):
             return self.predict()
         
@@ -375,6 +376,43 @@ class Kalman3D:
 
         self.x = self.x + K @ y
         self.P = (np.eye(6, dtype=np.float32) - K @ self.H) @ self.P
+
+        return self.x[:3].flatten()'''
+
+        z = np.asarray(z, dtype=np.float32).reshape(3,1)
+
+        if np.any(np.isnan(z)):
+            return self.predict()
+
+        # count frame
+        self.frame_count += 1
+
+        # initialize
+        if not self.initialized:
+            self.x[:3] = z
+            self.initialized = True
+            return self.x[:3].flatten()
+
+        # first 10 frames:
+        # directly use measurement
+        if self.frame_count < 10:
+            self.x[:3] = z
+            return self.x[:3].flatten()
+
+        self.predict()
+
+        y = z - self.H @ self.x
+
+        S = self.H @ self.P @ self.H.T + self.R
+
+        K = self.P @ self.H.T @ np.linalg.inv(S)
+
+        self.x = self.x + K @ y
+
+        self.P = (
+            np.eye(6, dtype=np.float32)
+            - K @ self.H
+        ) @ self.P
 
         return self.x[:3].flatten()
 
@@ -443,6 +481,8 @@ def homography_approx(ankle_points_2d, H_inv_Mtx):
 # ===== Main loop =====
 def main():
     # State
+    trajectory_P1 = []
+    trajectory_P2 = []
     frame_id = 0
     paused = False  # State to track if the program is paused
     
@@ -626,6 +666,26 @@ def main():
             else:
                 filtered_points = apply_kalman_to_skeleton(points_3d, kalman_P2)
                 points_3d_P2.append(filtered_points)
+            left_ankle = filtered_points[BodyKpt.Left_Ankle]
+            right_ankle = filtered_points[BodyKpt.Right_Ankle]
+            #left_ankle = smoothed_points[BodyKpt.Left_Ankle]
+            #right_ankle = smoothed_points[BodyKpt.Right_Ankle]
+            player_pos = np.nanmean(
+                np.vstack([left_ankle, right_ankle]),
+                axis=0
+            )
+
+            data = {
+                "frame_id": frame_id,
+                "x": player_pos[0],
+                "y": player_pos[1],
+                "z": player_pos[2]
+            }
+
+            if i == 0:
+                trajectory_P1.append(data)
+            else:
+                trajectory_P2.append(data)
         all_homography_points = np.vstack((ap_A, ap_B))
         # print(all_homography_points)
         top_view = draw_top_view(points_3d_P1[0], None, all_homography_points)
@@ -668,6 +728,14 @@ def main():
     writer_camB.release()
     writer_top.release()
     writer_front.release()
+    df_P1 = pd.DataFrame(trajectory_P1)
+    df_P2 = pd.DataFrame(trajectory_P2)
+
+    df_P1.to_csv("Player1_trajectory.csv", index=False)
+    df_P2.to_csv("Player2_trajectory.csv", index=False)
+
+    print("Saved Player1_trajectory.csv")
+    print("Saved Player2_trajectory.csv")
     capA.release()
     capB.release()
     # capB.release()
