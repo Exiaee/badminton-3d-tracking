@@ -4,6 +4,9 @@ import pandas as pd
 import configparser, json
 import os
 from skeleton_util import BodyKpt, SKELETON_CONNECTIONS, court_3d
+from scipy.interpolate import Akima1DInterpolator
+from scipy.interpolate import PchipInterpolator
+from scipy.signal import savgol_filter
 
 # 4 cameras in 4 corners, id: 0, 1, 2, 3
 INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
@@ -15,6 +18,7 @@ VIDEO_A = f"{INPUT_PATH}/CameraReader_{CAM_PAIRS[SELECTED_PAIR][0]}.mp4"
 VIDEO_B = f"{INPUT_PATH}/CameraReader_{CAM_PAIRS[SELECTED_PAIR][1]}.mp4"
 capA = cv2.VideoCapture(VIDEO_A)
 capB = cv2.VideoCapture(VIDEO_B)
+fps_a = capA.get(cv2.CAP_PROP_FPS)
 
 COLOR_R = (0, 0, 255)
 COLOR_G = (0, 255, 0)
@@ -22,6 +26,8 @@ COLOR_B = (255, 0, 0)
 COLOR_Y = (0, 255, 255)
 COLOR_W = (255, 255, 255)
 COLOR_K = (0, 0, 0)
+COLOR_TRAJ = (255, 255, 0)
+COLOR_P = (255,0,255)
 
 # Projection Matrices
 cfg_files = [f for f in os.listdir(INPUT_PATH) if f.endswith(".cfg")]
@@ -67,6 +73,35 @@ def read_jsonl(file_path):
             
             yield json.loads(line)
             
+def akima_fill(series, frame_ids):
+    valid = series.notna()
+    interp = Akima1DInterpolator(
+        frame_ids[valid],
+        series[valid]
+    )
+
+    filled = pd.Series(
+        interp(frame_ids),
+        index=series.index
+    )
+    return filled.interpolate(method="linear", limit_direction="both")
+
+def pchip_fill(series, frame_ids):
+
+    valid = series.notna()
+
+    interp = PchipInterpolator(
+        frame_ids[valid],
+        series[valid]
+    )
+
+    filled = pd.Series(
+        interp(frame_ids),
+        index=series.index
+    )
+
+    return filled.interpolate(method="linear", limit_direction="both")
+
 jsonl_files = [f for f in os.listdir(INPUT_PATH) if (f.startswith("Pose_") and f.endswith(".jsonl"))]
 jsonl_files.sort()
 pose_jsonls = []
@@ -111,15 +146,34 @@ for jsonl_file in jsonl_files:
     pose_tmp["timestamp"] = pose_tmp["timestamp"].interpolate(
         method="linear", limit_direction="both")
     for i in range(num_keypoints):
-        pose_tmp[f"kpts_{i}_x"] = pose_tmp[f"kpts_{i}_x"].interpolate(
+        '''pose_tmp[f"kpts_{i}_x"] = pose_tmp[f"kpts_{i}_x"].interpolate(
         method="linear",
         limit_direction="both"
         )
         pose_tmp[f"kpts_{i}_y"] = pose_tmp[f"kpts_{i}_y"].interpolate(
         method="linear",
         limit_direction="both"
+        )'''
+
+        '''pose_tmp[f"kpts_{i}_x"] = akima_fill(
+            pose_tmp[f"kpts_{i}_x"],
+            pose_tmp.index
         )
-    pose_tmp["bbox_x"] =  pose_tmp["bbox_x"].interpolate(
+
+        pose_tmp[f"kpts_{i}_y"] = akima_fill(
+            pose_tmp[f"kpts_{i}_y"],
+            pose_tmp.index
+        )'''
+        pose_tmp[f"kpts_{i}_x"] = pchip_fill(
+            pose_tmp[f"kpts_{i}_x"],
+            pose_tmp.index
+        )
+        pose_tmp[f"kpts_{i}_y"] = pchip_fill(
+            pose_tmp[f"kpts_{i}_y"],
+            pose_tmp.index
+        )
+
+    '''pose_tmp["bbox_x"] =  pose_tmp["bbox_x"].interpolate(
         method="linear",
         limit_direction="both"
     )
@@ -127,7 +181,22 @@ for jsonl_file in jsonl_files:
     pose_tmp["bbox_y"] = pose_tmp["bbox_y"].interpolate(
         method="linear",
         limit_direction="both"
-    )
+    )'''
+    '''pose_tmp["bbox_x"] = akima_fill(
+    pose_tmp["bbox_x"],
+    pose_tmp.index )
+
+    pose_tmp["bbox_y"] = akima_fill(
+    pose_tmp["bbox_y"],
+    pose_tmp.index )'''
+    pose_tmp["bbox_x"] = pchip_fill(
+    pose_tmp["bbox_x"],
+    pose_tmp.index )
+    
+    pose_tmp["bbox_y"] = pchip_fill(
+    pose_tmp["bbox_y"],
+    pose_tmp.index )
+
     #pose_tmp.ffill(inplace=True)
     # Backward fill any remaining NaN values (if the first few rows are NaN)
     #pose_tmp.bfill(inplace=True)
@@ -156,6 +225,61 @@ def rule_base_filter(points3d):
         is_valid = 0
     return is_valid
 
+
+def draw_top_trajectory(canvas, trajectory, color=(255, 255, 0)): 
+    # Green: (0, 255, 0), Green: (255,255,0)
+    scale_vis = 40
+    sx, sy = 400, 800
+    cx, cy = sx//2, sy//2
+    if len(trajectory) < 2:
+        return canvas
+    
+    pts = []
+    #for x, y in trajectory:
+    for item in trajectory:
+        x , y = item["pos"]
+        is_jump = item["jump"]
+        if np.isnan(x) or np.isnan(y):
+            continue
+
+        px = int(cx - x * scale_vis)
+        py = int(cy + y * scale_vis)
+        pts.append((px, py, is_jump))
+    
+    for i in range(1, len(pts)):
+        p1 = pts[i-1][:2]
+        p2 = pts[i][:2]
+        cv2.line(canvas,p1, p2, color, 2)
+        curr_jump = pts[i][2]
+        prev_jump = pts[i-1][2]
+        if curr_jump and not prev_jump:
+            px, py = p2
+    # pulse animation
+            pulse = int(
+                10
+                + 8 * abs(np.sin(i * 0.5))
+            )
+
+            cv2.circle(
+                canvas,
+                p2,
+                #pulse,
+                6,
+                (0,0,255),
+                -1
+            )
+
+            '''cv2.putText(
+                canvas,
+                "J",
+                (px + 10, py - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.2,
+                (0,0,255),
+                2
+            )'''
+
+    return canvas
 # ===== Helper: draw top view =====
 
 def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
@@ -173,20 +297,24 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
     # serve line
     canvas = cv2.line(canvas, (0, SERVE_AREA_A), (sx, SERVE_AREA_A), COLOR_Y, 2)
     canvas = cv2.line(canvas, (0, SERVE_AREA_B), (sx, SERVE_AREA_B), COLOR_Y, 2)
-    
+    draw_kpts = [
+        BodyKpt.Left_Ankle,
+        BodyKpt.Right_Ankle,
+    ]
     for i, points3d in enumerate([points3dP1, points3dP2]):
         if points3d is None:
             continue
         proj_xy = points3d[BodyKpt.Left_Shoulder:BodyKpt.Bbox_Center, :2]
         bbox_center = points3d[BodyKpt.Bbox_Center]
         centorid = np.mean(proj_xy, axis=0)
-        cv2.circle(canvas, (int(cx - centorid[0] * scale_vis), int(cy + centorid[1] * scale_vis)), 36, COLOR_G, 2)
-        cv2.circle(canvas, (int(cx - bbox_center[0] * scale_vis), int(cy + bbox_center[1] * scale_vis)), 5, COLOR_R, -1)
-        cv2.circle(canvas, (int(cx - bbox_center[0] * scale_vis), int(cy + bbox_center[1] * scale_vis)), 36, COLOR_R, 2)
+        #cv2.circle(canvas, (int(cx - centorid[0] * scale_vis), int(cy + centorid[1] * scale_vis)), 36, COLOR_G, 2)
+        #cv2.circle(canvas, (int(cx - bbox_center[0] * scale_vis), int(cy + bbox_center[1] * scale_vis)), 5, COLOR_P, -1)
+        #cv2.circle(canvas, (int(cx - bbox_center[0] * scale_vis), int(cy + bbox_center[1] * scale_vis)), 36, COLOR_R, 2)
         for j, point3d in enumerate(points3d):
             if j < BodyKpt.Left_Shoulder:
                 continue
-            
+            if j not in draw_kpts:
+                continue
             x, y = point3d[:2]
             
             px = int(cx - x * scale_vis)
@@ -196,16 +324,16 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
             if j == BodyKpt.Right_Ankle:
                 cv2.putText(canvas, f"x:{x * scale_real:.2f}, y:{y * scale_real:.2f}", (px + 5, py - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_W, 1)
             # cv2.putText(canvas, f"{i}", (px + 5, py - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_W, 1)
-    for i, point in enumerate(extra_info):
+    '''for i, point in enumerate(extra_info):
         x, y = point
         px = int(cx - x * scale_vis)
         py = int(cy + y * scale_vis)
         if i % 2:
-            cv2.circle(canvas, (px, py), 5, COLOR_R, -1)
+            cv2.circle(canvas, (px, py), 5, COLOR_TRAJ, -1)
         # elif i % 3 == 1:
         #     cv2.circle(canvas, (px, py), 5, COLOR_B, -1)
         else:
-            cv2.circle(canvas, (px, py), 5, COLOR_Y, -1)
+            cv2.circle(canvas, (px, py), 5, COLOR_Y, -1)'''
     return canvas
 '''
 def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
@@ -327,11 +455,12 @@ def draw_virtual_court(frame, projMtx):
 
 
 class Kalman3D:
-    def __init__(self, dt = 1/30, process_noise = 0.001, measurement_noise = 0.5):
+    def __init__(self, dt = 1/30, process_noise = 0.03, measurement_noise = 0.05):
         self.initialized = False
         self.frame_count = 0
         self.x = np.zeros((6, 1), dtype=np.float32)  # [x,y,z,vx,vy,vz]
-
+        self.prev_z = None
+        self.dt = dt 
         self.F = np.array([
             [1, 0, 0, dt, 0,  0],
             [0, 1, 0, 0,  dt, 0],
@@ -390,15 +519,17 @@ class Kalman3D:
         # initialize
         if not self.initialized:
             self.x[:3] = z
+            self.prev_z = z.copy()
             self.initialized = True
             return self.x[:3].flatten()
 
         # first 10 frames:
         # directly use measurement
-        if self.frame_count < 10:
-            self.x[:3] = z
-            return self.x[:3].flatten()
-
+        #if self.frame_count < 10:
+        #    self.x[:3] = z
+        #    return self.x[:3].flatten()
+        meas_v = (z - self.prev_z) / self.dt
+        self.prev_z = z.copy()
         self.predict()
 
         y = z - self.H @ self.x
@@ -415,14 +546,21 @@ class Kalman3D:
         ) @ self.P
 
         return self.x[:3].flatten()
+    def get_velocity(self):
+        if not self.initialized:
+            return np.array([np.nan, np.nan, np.nan], dtype=np.float32)
+        
+        return self.x[3:].flatten()
 
 def apply_kalman_to_skeleton(points_3d, kalman_filters):
     filtered = np.zeros_like(points_3d, dtype=np.float32)
+    velocities = np.zeros_like(points_3d, dtype=np.float32)
 
     for k in range(points_3d.shape[0]):
         filtered[k] = kalman_filters[k].update(points_3d[k])
+        velocities[k] = kalman_filters[k].get_velocity()
 
-    return filtered
+    return filtered, velocities
 
 
 pose2D_projMtx_P1 = (pose_jsonls[CAM_PAIRS[0][0]], pose_jsonls[CAM_PAIRS[0][1]], projMtxs[CAM_PAIRS[0][0]], projMtxs[CAM_PAIRS[0][1]])
@@ -439,8 +577,8 @@ BUFFER_SIZE = 3  # Window size for smoothing
 buffer_P1 = []
 buffer_P2 = []
 
-kalman_P1 = [Kalman3D(dt = 1/30) for _ in range(num_keypoints + 1)]
-kalman_P2 = [Kalman3D(dt = 1/30) for _ in range(num_keypoints + 1)]\
+kalman_P1 = [Kalman3D(dt = 1/fps_a) for _ in range(num_keypoints + 1)]
+kalman_P2 = [Kalman3D(dt = 1/fps_a) for _ in range(num_keypoints + 1)]
 
 
 def smooth_points(buffer, new_points):
@@ -477,6 +615,8 @@ def homography_approx(ankle_points_2d, H_inv_Mtx):
     ankle_points_3d = ankle_points_3d_hom[:3] / ankle_points_3d_hom[2]  # Normalize homogeneous coordinates
     return ankle_points_3d[:2].T  # Return x, y position in real-world coordinates
 
+
+top_traj_P1 = []
 
 # ===== Main loop =====
 def main():
@@ -661,10 +801,10 @@ def main():
                 smoothed_points = smooth_points(buffer_P2, points_3d)
                 points_3d_P2.append(smoothed_points)'''
             if i == 0 :
-                filtered_points = apply_kalman_to_skeleton(points_3d, kalman_P1)
+                filtered_points,  velocities = apply_kalman_to_skeleton(points_3d, kalman_P1)
                 points_3d_P1.append(filtered_points)
             else:
-                filtered_points = apply_kalman_to_skeleton(points_3d, kalman_P2)
+                filtered_points, velocities = apply_kalman_to_skeleton(points_3d, kalman_P2)
                 points_3d_P2.append(filtered_points)
             left_ankle = filtered_points[BodyKpt.Left_Ankle]
             right_ankle = filtered_points[BodyKpt.Right_Ankle]
@@ -674,12 +814,41 @@ def main():
                 np.vstack([left_ankle, right_ankle]),
                 axis=0
             )
+            left_v = velocities[BodyKpt.Left_Ankle]
+            right_v = velocities[BodyKpt.Right_Ankle]
+            left_z = left_ankle[2]
+            right_z = right_ankle[2]
+
+            left_vz = left_v[2]
+            right_vz = right_v[2]
+            player_v = np.nanmean(
+            np.vstack([left_v, right_v]),
+            axis=0)
+
+            speed_mps = np.linalg.norm(player_v[:2])
+            speed_kmh = speed_mps * 3.6
+            
+            is_jump =(
+                left_z > 0.20 and
+                right_z > 0.20 and
+                abs(left_vz) > 0.3 and
+                abs(right_vz) > 0.3
+            )
+            if not np.any(np.isnan(player_pos[:2])):
+                top_traj_P1.append({"pos": player_pos[:2].copy(),
+                                "jump": is_jump})
+            
 
             data = {
                 "frame_id": frame_id,
                 "x": player_pos[0],
                 "y": player_pos[1],
-                "z": player_pos[2]
+                "z": player_pos[2],
+                "vx": player_v[0],
+                "vy": player_v[1],
+                "vz": player_v[2],
+                "speed_mps": speed_mps,
+                "speed_kmh": speed_kmh
             }
 
             if i == 0:
@@ -689,6 +858,7 @@ def main():
         all_homography_points = np.vstack((ap_A, ap_B))
         # print(all_homography_points)
         top_view = draw_top_view(points_3d_P1[0], None, all_homography_points)
+        top_view = draw_top_trajectory(top_view, top_traj_P1)
         # testing homography approximation for human position
         # ap_Ax, ap_Ay = ap_A
         # ap_Bx, ap_By = ap_B
