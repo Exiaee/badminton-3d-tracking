@@ -229,8 +229,13 @@ def rule_base_filter(points3d):
 def draw_top_trajectory(canvas, trajectory, color=(255, 255, 0)): 
     # Green: (0, 255, 0), Green: (255,255,0)
     scale_vis = 40
+    bg_h, bg_w = canvas.shape[:2]
     sx, sy = 400, 800
-    cx, cy = sx//2, sy//2
+    offset_x = (bg_w - sx) //2
+    offset_y = (bg_h - sy) //2
+    #cx, cy = sx//2, sy//2
+    cx = offset_x + sx//2
+    cy = offset_y + sy//2
     if len(trajectory) < 2:
         return canvas
     
@@ -281,19 +286,177 @@ def draw_top_trajectory(canvas, trajectory, color=(255, 255, 0)):
 
     return canvas
 # ===== Helper: draw top view =====
+def draw_mini_court(height=800):
 
+    court_ratio = 6.1 / 13.4
+
+    width = int(height * court_ratio)
+
+    court = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # green background
+    court[:] = (80, 160, 80)
+
+    line_color = (220,255,220)
+    thickness = 2
+
+    margin = 20
+
+    left = margin
+    right = width - margin
+
+    top = margin
+    bottom = height - margin
+
+    court_w = right - left
+    court_h = bottom - top
+
+    # ===== real badminton dimensions =====
+
+    doubles_width = 6.10
+    singles_width = 5.18
+
+    court_length = 13.40
+
+    short_service = 1.98
+    long_service_double = 0.76
+
+    center_x = width // 2
+    net_y = height // 2
+
+    scale = court_h / court_length
+
+    # outer court
+    cv2.rectangle(
+        court,
+        (left, top),
+        (right, bottom),
+        line_color,
+        thickness
+    )
+
+    # singles sidelines
+    single_margin = int(
+        ((doubles_width - singles_width)/2)
+        * scale
+    )
+
+    cv2.line(
+        court,
+        (left + single_margin, top),
+        (left + single_margin, bottom),
+        line_color,
+        thickness
+    )
+
+    cv2.line(
+        court,
+        (right - single_margin, top),
+        (right - single_margin, bottom),
+        line_color,
+        thickness
+    )
+
+    # net
+    cv2.line(
+        court,
+        (left, net_y),
+        (right, net_y),
+        line_color,
+        thickness
+    )
+
+    # short service line
+    short_offset = int(short_service * scale)
+
+    cv2.line(
+        court,
+        (left, net_y - short_offset),
+        (right, net_y - short_offset),
+        line_color,
+        thickness
+    )
+
+    cv2.line(
+        court,
+        (left, net_y + short_offset),
+        (right, net_y + short_offset),
+        line_color,
+        thickness
+    )
+
+    # center line
+    cv2.line(
+        court,
+        (center_x, top),
+        (center_x, bottom),
+        line_color,
+        thickness
+    )
+
+    # long service line for doubles
+    long_offset = int(long_service_double * scale)
+
+    cv2.line(
+        court,
+        (left, top + long_offset),
+        (right, top + long_offset),
+        line_color,
+        thickness
+    )
+
+    cv2.line(
+        court,
+        (left, bottom - long_offset),
+        (right, bottom - long_offset),
+        line_color,
+        thickness
+    )
+
+    return court
 def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
+
     scale_vis = 40
     scale_real = 100  # meter → pixel
     sx, sy = 400, 800
     cx, cy = sx//2, sy//2
-    canvas = np.zeros((sy, sx, 3), dtype=np.uint8)
-    
+    #canvas = np.zeros((sy, sx, 3), dtype=np.uint8)
+    canvas = np.full(
+        (sy, sx, 3),
+        (40, 100, 40),
+        dtype = np.uint8
+    )
+    mid_margin = 25
+    mid_canvas = np.full(
+        (sy+mid_margin, sx+mid_margin, 3),
+        (40, 100, 40),
+        dtype = np.uint8
+    )
+    court_w_m = 6.10
+    court_h_m = 13.40
+    single_w_m = 5.18
+
+    scale_x = sx / court_w_m
+    scale_y = sy / court_h_m
+      
+    #canvas = draw_mini_court(height=sy)
     SERVE_AREA_A, SERVE_AREA_B = cy-90, cy+90
     
+    single_x_offset = int(((court_w_m - single_w_m) / 2) * scale_x)
+    single_y_offset = int(0.76 * scale_y)
     canvas = cv2.line(canvas, (cx, 0), (cx, SERVE_AREA_A), COLOR_Y, 2)
     canvas = cv2.line(canvas, (cx, SERVE_AREA_B), (cx, sy), COLOR_Y, 2)
     canvas = cv2.line(canvas, (0, cy), (sx, cy), COLOR_W, 2)
+    canvas = cv2.line(canvas, (0, 0), (sx, 0), COLOR_W, 2)
+    canvas = cv2.line(canvas, (0, sy), (sx, sy), COLOR_W, 2)
+    canvas = cv2.line(canvas, (sx, 0), (sx, sy), COLOR_W, 2)
+    canvas = cv2.line(canvas, (0, 0), (0, sy), COLOR_W, 2)
+    
+    canvas = cv2.line(canvas, (single_x_offset, 0), (single_x_offset, sy), COLOR_W, 2)
+    canvas = cv2.line(canvas, (sx-single_x_offset, 0), (sx-single_x_offset, sy), COLOR_W, 2)
+
+    canvas = cv2.line(canvas, (0, single_y_offset), (sx, single_y_offset), COLOR_W, 2)
+    canvas = cv2.line(canvas, (0, sy - single_y_offset), (sx, sy - single_y_offset), COLOR_W, 2)
     # serve line
     canvas = cv2.line(canvas, (0, SERVE_AREA_A), (sx, SERVE_AREA_A), COLOR_Y, 2)
     canvas = cv2.line(canvas, (0, SERVE_AREA_B), (sx, SERVE_AREA_B), COLOR_Y, 2)
@@ -301,6 +464,33 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
         BodyKpt.Left_Ankle,
         BodyKpt.Right_Ankle,
     ]
+    bg_h = 950 
+    bg_w = 500
+    '''big_canvas = np.full(
+        (bg_h, bg_w, 3),
+        (40, 100, 40),
+        dtype = np.uint8
+    )'''
+    big_canvas = np.zeros((bg_h, bg_w, 3), dtype=np.uint8)
+      
+
+    court_h, court_w = canvas.shape[:2]
+    offset_x = (bg_w - court_w) // 2
+    offset_y = (bg_h - court_h) // 2
+    cx = offset_x + sx//2
+    cy = offset_y + sy//2
+
+    mid_court_h, mid_court_w = mid_canvas.shape[:2]
+    offset_x_mid = (bg_w - mid_court_w) // 2
+    offset_y_mid = (bg_h - mid_court_h) // 2
+    big_canvas[
+        offset_y_mid-50:offset_y_mid+mid_court_h-50,
+        offset_x_mid:offset_x_mid+mid_court_w
+    ] = mid_canvas
+    big_canvas[
+        offset_y-40:offset_y+court_h-40,
+        offset_x:offset_x+court_w
+    ] = canvas
     for i, points3d in enumerate([points3dP1, points3dP2]):
         if points3d is None:
             continue
@@ -315,15 +505,16 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
                 continue
             if j not in draw_kpts:
                 continue
-            x, y = point3d[:2]
-            
+            #x, y = point3d[:2]
+            x, y, z = point3d
             px = int(cx - x * scale_vis)
             py = int(cy + y * scale_vis)
-
-            cv2.circle(canvas, (px, py), 3, COLOR_G if i == 0 else COLOR_R, -1)
+            cv2.circle(big_canvas, (px, py), 3, COLOR_G if i == 0 else COLOR_R, -1)
             if j == BodyKpt.Right_Ankle:
-                cv2.putText(canvas, f"x:{x * scale_real:.2f}, y:{y * scale_real:.2f}", (px + 5, py - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_W, 1)
+                cv2.putText(big_canvas, f"x:{x * scale_real:.2f}, y:{y * scale_real:.2f},  z:{z * scale_real:.2f}", (px + 5, py - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_W, 1)
             # cv2.putText(canvas, f"{i}", (px + 5, py - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_W, 1)
+    
+   
     '''for i, point in enumerate(extra_info):
         x, y = point
         px = int(cx - x * scale_vis)
@@ -334,7 +525,9 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
         #     cv2.circle(canvas, (px, py), 5, COLOR_B, -1)
         else:
             cv2.circle(canvas, (px, py), 5, COLOR_Y, -1)'''
-    return canvas
+        
+       
+    return big_canvas
 '''
 def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
     scale_vis = 45
@@ -659,7 +852,8 @@ def main():
         "TopView.mp4",
         fourcc,
         fps_out,
-        (400, 800)
+        #(400, 800)
+        (500, 950)
     )
 
     writer_front = cv2.VideoWriter(
@@ -814,6 +1008,10 @@ def main():
                 np.vstack([left_ankle, right_ankle]),
                 axis=0
             )
+            player_pos_right_ankle = np.nanmean(
+                np.vstack([right_ankle, right_ankle]),
+                axis=0
+            )
             left_v = velocities[BodyKpt.Left_Ankle]
             right_v = velocities[BodyKpt.Right_Ankle]
             left_z = left_ankle[2]
@@ -829,13 +1027,19 @@ def main():
             speed_kmh = speed_mps * 3.6
             
             is_jump =(
-                left_z > 0.20 and
-                right_z > 0.20 and
+                left_z > 0.90 and
+                right_z > 0.90 and
                 abs(left_vz) > 0.3 and
                 abs(right_vz) > 0.3
             )
-            if not np.any(np.isnan(player_pos[:2])):
+            if is_jump:
+                print(f"left_z: {left_z}, right_z: {right_z}")
+            '''if not np.any(np.isnan(player_pos[:2])):
                 top_traj_P1.append({"pos": player_pos[:2].copy(),
+                                "jump": is_jump})'''
+            
+            if not np.any(np.isnan(player_pos_right_ankle[:2])):
+                top_traj_P1.append({"pos": player_pos_right_ankle[:2].copy(),
                                 "jump": is_jump})
             
 
