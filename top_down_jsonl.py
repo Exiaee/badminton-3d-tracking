@@ -7,11 +7,24 @@ from skeleton_util import BodyKpt, SKELETON_CONNECTIONS, court_3d
 from scipy.interpolate import Akima1DInterpolator
 from scipy.interpolate import PchipInterpolator
 from scipy.signal import savgol_filter
-
+from datetime import datetime
+from pathlib import Path
 # 4 cameras in 4 corners, id: 0, 1, 2, 3
+date = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+folder_name = Path(INPUT_PATH).name
 CAM_PAIRS = [(0, 2)]
 num_keypoints = 17
+
+#player_anchor = "middle"
+player_anchor = "right_ankel"
+
+fill_method = "akima"
+#fill_method = "pchip"
+
+folder_name = f"{folder_name}_{player_anchor}_{fill_method}"
 
 SELECTED_PAIR = 0 # 0 for pair (0, 1), 1 for pair (2, 3)
 VIDEO_A = f"{INPUT_PATH}/CameraReader_{CAM_PAIRS[SELECTED_PAIR][0]}.mp4"
@@ -105,6 +118,9 @@ def pchip_fill(series, frame_ids):
 jsonl_files = [f for f in os.listdir(INPUT_PATH) if (f.startswith("Pose_") and f.endswith(".jsonl"))]
 jsonl_files.sort()
 pose_jsonls = []
+
+
+'''
 for jsonl_file in jsonl_files:
     pose_tmp = []
     # pose_tmp = pd.DataFrame(columns=["frame_id"] + [f"keypoint_{i}_{axis}" for i in range(num_keypoints) for axis in ["x", "y"]])
@@ -146,24 +162,36 @@ for jsonl_file in jsonl_files:
     pose_tmp["timestamp"] = pose_tmp["timestamp"].interpolate(
         method="linear", limit_direction="both")
     for i in range(num_keypoints):
-        '''pose_tmp[f"kpts_{i}_x"] = pose_tmp[f"kpts_{i}_x"].interpolate(
+        pose_tmp[f"kpts_{i}_x"] = pose_tmp[f"kpts_{i}_x"].interpolate(
+        method="linear",
+        limit=12,
+        limit_direction="both"
+        )
+
+        pose_tmp[f"kpts_{i}_y"] = pose_tmp[f"kpts_{i}_y"].interpolate(
+            method="linear",
+            limit=12,
+            limit_direction="both"
+        )
+        pose_tmp[f"kpts_{i}_x"] = pose_tmp[f"kpts_{i}_x"].interpolate(
         method="linear",
         limit_direction="both"
         )
         pose_tmp[f"kpts_{i}_y"] = pose_tmp[f"kpts_{i}_y"].interpolate(
         method="linear",
         limit_direction="both"
-        )'''
+        )
 
-        '''pose_tmp[f"kpts_{i}_x"] = akima_fill(
+        pose_tmp[f"kpts_{i}_x"] = akima_fill(
             pose_tmp[f"kpts_{i}_x"],
             pose_tmp.index
         )
-
+        
         pose_tmp[f"kpts_{i}_y"] = akima_fill(
             pose_tmp[f"kpts_{i}_y"],
             pose_tmp.index
-        )'''
+        )
+        
         pose_tmp[f"kpts_{i}_x"] = pchip_fill(
             pose_tmp[f"kpts_{i}_x"],
             pose_tmp.index
@@ -173,7 +201,7 @@ for jsonl_file in jsonl_files:
             pose_tmp.index
         )
 
-    '''pose_tmp["bbox_x"] =  pose_tmp["bbox_x"].interpolate(
+    pose_tmp["bbox_x"] =  pose_tmp["bbox_x"].interpolate(
         method="linear",
         limit_direction="both"
     )
@@ -181,14 +209,15 @@ for jsonl_file in jsonl_files:
     pose_tmp["bbox_y"] = pose_tmp["bbox_y"].interpolate(
         method="linear",
         limit_direction="both"
-    )'''
-    '''pose_tmp["bbox_x"] = akima_fill(
+    )
+    pose_tmp["bbox_x"] = akima_fill(
     pose_tmp["bbox_x"],
     pose_tmp.index )
 
     pose_tmp["bbox_y"] = akima_fill(
     pose_tmp["bbox_y"],
-    pose_tmp.index )'''
+    pose_tmp.index )
+    
     pose_tmp["bbox_x"] = pchip_fill(
     pose_tmp["bbox_x"],
     pose_tmp.index )
@@ -196,6 +225,17 @@ for jsonl_file in jsonl_files:
     pose_tmp["bbox_y"] = pchip_fill(
     pose_tmp["bbox_y"],
     pose_tmp.index )
+    pose_tmp["bbox_x"] = pose_tmp["bbox_x"].interpolate(
+    method="linear",
+    limit=12,
+    limit_direction="both"
+    )
+
+    pose_tmp["bbox_y"] = pose_tmp["bbox_y"].interpolate(
+        method="linear",
+        limit=12,
+        limit_direction="both"
+    )
 
     #pose_tmp.ffill(inplace=True)
     # Backward fill any remaining NaN values (if the first few rows are NaN)
@@ -207,8 +247,140 @@ for jsonl_file in jsonl_files:
     pose_tmp.iloc[:, 8::2] *= normalize_factor_y
     pose_jsonls.append(pose_tmp)
     
-print(f"Done reading {len(pose_jsonls)} pose JSONL files.")
+print(f"Done reading {len(pose_jsonls)} pose JSONL files.")'''
 
+
+jsonl_files = [f for f in os.listdir(INPUT_PATH)
+               if f.startswith("Pose_") and f.endswith(".jsonl")]
+jsonl_files.sort()
+
+pose_jsonls = []
+
+for jsonl_file in jsonl_files:
+    pose_tmp = []
+
+    for line in read_jsonl(os.path.join(INPUT_PATH, jsonl_file)):
+        line_data = {
+            "frame_id": line["frame_id"],
+            "timestamp": line["timestamp"]
+        }
+
+        if "detection" in line and len(line["detection"]) > 0:
+            kpts = line["detection"][0]["kpts"]
+
+            for i in range(num_keypoints):
+                line_data[f"kpts_{i}_x"] = kpts[2 * i]
+                line_data[f"kpts_{i}_y"] = kpts[2 * i + 1]
+
+            bbox = line["detection"][0]["bbox"]
+            line_data["bbox_x"] = bbox[0]
+            line_data["bbox_y"] = bbox[1]
+
+        else:
+            for i in range(num_keypoints):
+                line_data[f"kpts_{i}_x"] = np.nan
+                line_data[f"kpts_{i}_y"] = np.nan
+
+            line_data["bbox_x"] = np.nan
+            line_data["bbox_y"] = np.nan
+
+        pose_tmp.append(line_data)
+
+    pose_tmp = pd.DataFrame(pose_tmp)
+    pose_tmp = pose_tmp.sort_values("frame_id")
+    pose_tmp = pose_tmp.drop_duplicates(subset="frame_id", keep="first")
+
+    print(f"Loaded {pose_tmp.shape} frames from {jsonl_file}")
+
+    # Step 1: 先用 ffill/bfill 補原本 jsonl 裡面的 NaN
+    pose_tmp.ffill(inplace=True)
+    pose_tmp.bfill(inplace=True)
+
+    # Step 2: 再把每 4 frame 補成每 1 frame
+    full_index = np.arange(
+        pose_tmp["frame_id"].min(),
+        pose_tmp["frame_id"].max() + 1
+    )
+
+    pose_tmp = pose_tmp.set_index("frame_id")
+    pose_tmp = pose_tmp.reindex(full_index)
+
+    pose_tmp["timestamp"] = pose_tmp["timestamp"].interpolate(
+        method="linear",
+        limit_direction="both"
+    )
+
+    # Step 3: Akima 補中間 frame
+    if fill_method == "akima":
+        for i in range(num_keypoints):
+            pose_tmp[f"kpts_{i}_x"] = akima_fill(
+                pose_tmp[f"kpts_{i}_x"],
+                pose_tmp.index
+            )
+
+            pose_tmp[f"kpts_{i}_y"] = akima_fill(
+                pose_tmp[f"kpts_{i}_y"],
+                pose_tmp.index
+            )
+
+        pose_tmp["bbox_x"] = akima_fill(
+            pose_tmp["bbox_x"],
+            pose_tmp.index
+        )
+
+        pose_tmp["bbox_y"] = akima_fill(
+            pose_tmp["bbox_y"],
+            pose_tmp.index
+        )
+    elif fill_method == "pchip":
+        for i in range(num_keypoints):
+            pose_tmp[f"kpts_{i}_x"] = pchip_fill(
+                pose_tmp[f"kpts_{i}_x"],
+                pose_tmp.index
+            )
+
+            pose_tmp[f"kpts_{i}_y"] = pchip_fill(
+                pose_tmp[f"kpts_{i}_y"],
+                pose_tmp.index
+            )
+
+        pose_tmp["bbox_x"] = pchip_fill(
+            pose_tmp["bbox_x"],
+            pose_tmp.index
+        )
+        pose_tmp["bbox_y"] = pchip_fill(
+            pose_tmp["bbox_y"],
+            pose_tmp.index
+        )
+    pose_tmp = pose_tmp.reset_index()
+    pose_tmp = pose_tmp.rename(columns={"index": "frame_id"})
+
+    # Step 4: denormalize
+    pose_tmp.iloc[:, 2::2] *= normalize_factor_x
+    pose_tmp.iloc[:, 3::2] *= normalize_factor_y
+
+    pose_jsonls.append(pose_tmp)
+    # ============================
+    # Save filled pose CSV
+    # ============================
+
+    save_dir = Path( INPUT_PATH) / f"filled_pose_{fill_method}"
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    pose_name = Path(jsonl_file).stem
+
+    save_path = save_dir / (
+        f"{pose_name}_filled_{date}.csv"
+    )
+
+    pose_tmp.to_csv(save_path, index=False)
+
+    print(f"[SAVE] {save_path}")
+
+    #pose_jsonls.append(pose_tmp)
+
+    print(f"Done reading {len(pose_jsonls)} pose JSONL files.")
 
 
 # null_point = np.ones((4, 12))
@@ -426,7 +598,7 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
         (40, 100, 40),
         dtype = np.uint8
     )
-    mid_margin = 25
+    mid_margin = 30
     mid_canvas = np.full(
         (sy+mid_margin, sx+mid_margin, 3),
         (40, 100, 40),
@@ -484,11 +656,11 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
     offset_x_mid = (bg_w - mid_court_w) // 2
     offset_y_mid = (bg_h - mid_court_h) // 2
     big_canvas[
-        offset_y_mid-50:offset_y_mid+mid_court_h-50,
+        offset_y_mid-10:offset_y_mid+mid_court_h-10, # 50 -> 20
         offset_x_mid:offset_x_mid+mid_court_w
     ] = mid_canvas
     big_canvas[
-        offset_y-40:offset_y+court_h-40,
+        offset_y-5:offset_y+court_h-5, # 40 -> 10
         offset_x:offset_x+court_w
     ] = canvas
     for i, points3d in enumerate([points3dP1, points3dP2]):
@@ -507,6 +679,9 @@ def draw_top_view(points3dP1=None, points3dP2=None, extra_info=None):
                 continue
             #x, y = point3d[:2]
             x, y, z = point3d
+            if np.isnan(x) or np.isnan(y) or np.isnan(z):
+                continue
+
             px = int(cx - x * scale_vis)
             py = int(cy + y * scale_vis)
             cv2.circle(big_canvas, (px, py), 3, COLOR_G if i == 0 else COLOR_R, -1)
@@ -648,7 +823,7 @@ def draw_virtual_court(frame, projMtx):
 
 
 class Kalman3D:
-    def __init__(self, dt = 1/30, process_noise = 0.03, measurement_noise = 0.05):
+    def __init__(self, dt = 1/30, process_noise = 0.01, measurement_noise = 0.05): # process_noise = 0.03, measurement_noise = 0.05)
         self.initialized = False
         self.frame_count = 0
         self.x = np.zeros((6, 1), dtype=np.float32)  # [x,y,z,vx,vy,vz]
@@ -756,6 +931,29 @@ def apply_kalman_to_skeleton(points_3d, kalman_filters):
     return filtered, velocities
 
 
+def angle_3d(a, b, c):
+    """Calculate the angle at point b formed by points a, b, c in 3D space."""
+    ba = a - b
+    bc = c - b
+
+    # Normalize the vectors
+    ba_norm = np.linalg.norm(ba)
+    bc_norm = np.linalg.norm(bc)
+
+    if np.any(np.isnan(ba)) or np.any(np.isnan(bc)):
+        return np.nan
+    
+    ba_unit = ba / ba_norm
+    bc_unit = bc / bc_norm
+
+    # Calculate the cosine of the angle using the dot product
+    cos_angle = np.clip(np.dot(ba_unit, bc_unit), -1.0, 1.0)
+
+    # Return the angle in degrees
+    angle_rad = np.arccos(cos_angle)
+    angle_deg = np.degrees(angle_rad)
+    return angle_deg
+
 pose2D_projMtx_P1 = (pose_jsonls[CAM_PAIRS[0][0]], pose_jsonls[CAM_PAIRS[0][1]], projMtxs[CAM_PAIRS[0][0]], projMtxs[CAM_PAIRS[0][1]])
 # pose2D_projMtx_P2 = (pose_jsonls[CAM_PAIRS[1][0]], pose_jsonls[CAM_PAIRS[1][1]], projMtxs[CAM_PAIRS[1][0]], projMtxs[CAM_PAIRS[1][1]])
 
@@ -835,21 +1033,21 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     fps_out = 30
     writer_camA = cv2.VideoWriter(
-        "CameraA.mp4",
+        f"CameraA_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         (frameAS.shape[1], frameAS.shape[0])
     )
 
     writer_camB = cv2.VideoWriter(
-        "CameraB.mp4",
+        f"CameraB_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         (frameBS.shape[1], frameBS.shape[0])
     )
 
     writer_top = cv2.VideoWriter(
-        "TopView.mp4",
+        f"TopView_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         #(400, 800)
@@ -857,7 +1055,7 @@ def main():
     )
 
     writer_front = cv2.VideoWriter(
-        "FrontBackView.mp4",
+        f"FrontBackView_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         (400, 400)
@@ -899,6 +1097,8 @@ def main():
             # Extract the row corresponding to the current frame_id
             row_A = pose2D_A[pose2D_A["frame_id"] == frame_id]
             row_B = pose2D_B[pose2D_B["frame_id"] == frame_id]
+            if row_A.empty or row_B.empty:
+                continue
             # Extract 2D keypoints for both cameras
             points_2d_A = row_A.iloc[0][2:].values.reshape(-1, 2)
             points_2d_B = row_B.iloc[0][2:].values.reshape(-1, 2)
@@ -1000,6 +1200,22 @@ def main():
             else:
                 filtered_points, velocities = apply_kalman_to_skeleton(points_3d, kalman_P2)
                 points_3d_P2.append(filtered_points)
+
+            # ==========================
+            # Right arm biomechanics
+            # ==========================
+
+            right_shoulder = filtered_points[BodyKpt.Right_Shoulder]
+            right_elbow = filtered_points[BodyKpt.Right_Elbow]
+            right_wrist = filtered_points[BodyKpt.Right_Wrist]
+            right_elbow_angle = angle_3d(right_shoulder, right_elbow, right_wrist)
+
+            left_shoulder = filtered_points[BodyKpt.Left_Shoulder]
+            left_elbow = filtered_points[BodyKpt.Left_Elbow]
+            left_wrist = filtered_points[BodyKpt.Left_Wrist]
+            left_elbow_angle = angle_3d(left_shoulder, left_elbow, left_wrist)
+
+       
             left_ankle = filtered_points[BodyKpt.Left_Ankle]
             right_ankle = filtered_points[BodyKpt.Right_Ankle]
             #left_ankle = smoothed_points[BodyKpt.Left_Ankle]
@@ -1034,14 +1250,15 @@ def main():
             )
             if is_jump:
                 print(f"left_z: {left_z}, right_z: {right_z}")
-            '''if not np.any(np.isnan(player_pos[:2])):
-                top_traj_P1.append({"pos": player_pos[:2].copy(),
-                                "jump": is_jump})'''
-            
-            if not np.any(np.isnan(player_pos_right_ankle[:2])):
-                top_traj_P1.append({"pos": player_pos_right_ankle[:2].copy(),
-                                "jump": is_jump})
-            
+            if player_anchor == "middle":
+                if not np.any(np.isnan(player_pos[:2])):
+                    top_traj_P1.append({"pos": player_pos[:2].copy(),
+                                    "jump": is_jump})
+            if player_anchor == "right_ankel":
+                if not np.any(np.isnan(player_pos_right_ankle[:2])):
+                    top_traj_P1.append({"pos": player_pos_right_ankle[:2].copy(),
+                                    "jump": is_jump})
+                
 
             data = {
                 "frame_id": frame_id,
@@ -1051,6 +1268,9 @@ def main():
                 "vx": player_v[0],
                 "vy": player_v[1],
                 "vz": player_v[2],
+                "right_elbow_angle (deg)": right_elbow_angle,
+                "left_elbow_angle (deg)": left_elbow_angle,
+                "jump": is_jump,
                 "speed_mps": speed_mps,
                 "speed_kmh": speed_kmh
             }
@@ -1059,8 +1279,12 @@ def main():
                 trajectory_P1.append(data)
             else:
                 trajectory_P2.append(data)
+        if len(points_3d_P1) == 0:
+            print(f"Skip frame {frame_id}: no valid 3D points")
+            continue        
         all_homography_points = np.vstack((ap_A, ap_B))
         # print(all_homography_points)
+
         top_view = draw_top_view(points_3d_P1[0], None, all_homography_points)
         top_view = draw_top_trajectory(top_view, top_traj_P1)
         # testing homography approximation for human position
@@ -1105,11 +1329,11 @@ def main():
     df_P1 = pd.DataFrame(trajectory_P1)
     df_P2 = pd.DataFrame(trajectory_P2)
 
-    df_P1.to_csv("Player1_trajectory.csv", index=False)
-    df_P2.to_csv("Player2_trajectory.csv", index=False)
+    df_P1.to_csv(f"Player1_trajectory_{player_anchor}_{folder_name}_{date}.csv", index=False)
+    df_P2.to_csv(f"Player2_trajectory_{player_anchor}_{folder_name}_{date}.csv", index=False)
 
-    print("Saved Player1_trajectory.csv")
-    print("Saved Player2_trajectory.csv")
+    print(f"Saved Player1_trajectory_{date}.csv")
+    print(f"Saved Player2_trajectory_{date}.csv")
     capA.release()
     capB.release()
     # capB.release()
