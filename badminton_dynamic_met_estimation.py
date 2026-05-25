@@ -7,6 +7,9 @@ from pathlib import Path
 from datetime import datetime
 
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
+OUTPUT_FOLDER = f"output_dynamic_MET_{date}"
+Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
+
 JUMP_ROPE_SLOW_MET = 8.3
 JUMP_ROPE_MOD_MET = 11.8
 JUMP_ROPE_FAST_MET = 12.3
@@ -34,8 +37,9 @@ height_m = 1.75
 INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 VIDEO_A = f"{INPUT_PATH}/CameraReader_0.mp4"
 
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260520_004440_with_swing.csv"
 
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260520_004440_with_swing.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260524_182533_with_swing.csv"
 folder_name = str(Path(csv_path).parent.relative_to(Path(csv_path).parents[1]))
 safe_folder_name = folder_name.replace("\\", "_")
 
@@ -288,6 +292,216 @@ df["calories_cumsum"] = df["kcal_per_frame"].cumsum()
 avg_met = df["MET"].mean()
 total_kcal = df["calories_cumsum"].iloc[-1]
 
+# =========================
+# Player Load
+# =========================
+# =========================
+# Player Load from Kalman-smoothed trajectory
+# =========================
+
+def kalman_1d(z, q=0.01, r=0.05, dt=1/30):
+    """
+    1D constant-velocity Kalman filter.
+    state = [position, velocity]
+    """
+    z = pd.Series(z).interpolate().bfill().ffill().to_numpy()
+
+    x = np.array([z[0], 0.0])
+    P = np.eye(2)
+
+    F = np.array([
+        [1, dt],
+        [0, 1]
+    ])
+
+    H = np.array([[1, 0]])
+
+    Q = q * np.array([
+        [dt**4 / 4, dt**3 / 2],
+        [dt**3 / 2, dt**2]
+    ])
+
+    R = np.array([[r]])
+
+    pos = []
+    vel = []
+
+    for zi in z:
+        # predict
+        x = F @ x
+        P = F @ P @ F.T + Q
+
+        # update
+        y = np.array([zi]) - H @ x
+        S = H @ P @ H.T + R
+        K = P @ H.T @ np.linalg.inv(S)
+
+        x = x + K @ y
+        P = (np.eye(2) - K @ H) @ P
+
+        pos.append(x[0])
+        vel.append(x[1])
+
+    return np.array(pos), np.array(vel)
+
+
+# Kalman smooth x/y/z
+df["x_kf"], _ = kalman_1d(
+    df["x"],
+    q=0.01,
+    r=0.1, #0.05 -> 0.1
+    dt=dt
+)
+
+df["y_kf"], _ = kalman_1d(
+    df["y"],
+    q=0.01,
+    r=0.1,
+    dt=dt
+)
+
+df["z_kf"], _ = kalman_1d(
+    df["z"],
+    q=0.01,
+    r=0.1,
+    dt=dt
+)
+df["vx_kf"] = np.gradient(df["x_kf"], dt)
+df["vy_kf"] = np.gradient(df["y_kf"], dt)
+df["vz_kf"] = np.gradient(df["z_kf"], dt)
+
+# acceleration from Kalman velocity
+df["ax_kf"] = np.gradient(df["vx_kf"], dt)
+df["ay_kf"] = np.gradient(df["vy_kf"], dt)
+df["az_kf"] = np.gradient(df["vz_kf"], dt)
+
+# smooth acceleration
+for c in ["ax_kf", "ay_kf", "az_kf"]:
+    df[c] = savgol_filter(
+        df[c],
+        window_length=11,
+        polyorder=2
+    )
+
+# delta acceleration
+df["dax"] = df["ax_kf"].diff().fillna(0)
+df["day"] = df["ay_kf"].diff().fillna(0)
+df["daz"] = df["az_kf"].diff().fillna(0)
+
+# Player Load per frame
+# /100: scale to arbitrary units
+df["PL"] = (
+    np.sqrt(
+        df["dax"]**2 +
+        df["day"]**2 +
+        df["daz"]**2
+    )
+    
+)
+
+# remove extreme spikes
+df["PL"] = df["PL"].clip(
+    lower=0,
+    upper=df["PL"].quantile(0.99)
+)
+
+# rolling PL/min
+window_sec = 5
+window = max(1, int(window_sec * fps))
+'''
+df["PL_sum"] = (
+    df["PL"]
+    .rolling(window, min_periods=1)
+    .sum()
+)
+
+df["PL_window_sec"] = (
+    df["PL"]
+    .rolling(window, min_periods=1)
+    .count()
+    * dt
+)
+
+df["PL_per_min"] = (
+    df["PL_sum"]
+    / df["PL_window_sec"]
+    * 60
+)'''
+
+df["PL_per_min"] = (
+    df["PL"]
+    .rolling(
+        window,
+        center=True,
+        min_periods=1
+    )
+    .mean()
+    * 60
+)
+# smooth
+df["PL_per_min"] = savgol_filter(
+    df["PL_per_min"],
+    window_length=11, #21 -> 11
+    polyorder=2
+)
+
+df["PL_per_min"] = df["PL_per_min"].clip(
+    lower=0,
+    upper=df["PL_per_min"].quantile(0.99)
+)
+ignore_sec = 60
+ignore_frames = int(fps * ignore_sec)
+
+df.loc[
+    :ignore_frames,
+    "PL_per_min"
+] = np.nan
+valid_time_mask = df["time_sec"] >= ignore_sec
+# acceleration (m/s²)
+'''
+df["ax"] = df["vx"].diff().fillna(0) / dt
+df["ay"] = df["vy"].diff().fillna(0) / dt
+df["az"] = df["vz_calc"].diff().fillna(0) / dt
+
+# smooth acceleration first
+for c in ["ax","ay","az"]:
+    df[c] = savgol_filter(
+        df[c],
+        window_length=11,
+        polyorder=2
+    )
+# change in acceleration
+df["dax"] = df["ax"].diff().fillna(0)
+df["day"] = df["ay"].diff().fillna(0)
+df["daz"] = df["az"].diff().fillna(0)
+
+# Player Load
+df["PL"] = np.sqrt(df["dax"]**2 + df["day"]**2 + df["daz"]**2)
+
+# smooth
+df["PL"] = savgol_filter(df["PL"], window_length=11, polyorder=2)
+
+# rolling PL/min
+window_sec = 5
+window = int(window_sec * fps)
+
+df["PL_sum"] = (
+    df["PL"]
+    .rolling(
+        window,
+        min_periods=1
+    )
+    .sum()
+)
+
+df["PL_per_min"] = (
+    df["PL_sum"]
+    /
+    (window_sec/60)
+)
+df["PL_per_min"] = df["PL_per_min"].clip(
+    upper=df["PL_per_min"].quantile(0.99)
+)'''
 print(f"FPS: {fps:.2f}")
 print(f"Average MET: {avg_met:.2f}")
 print(f"Total Calories: {total_kcal:.2f} kcal")
@@ -304,7 +518,7 @@ plt.xlabel("Time (sec)")
 plt.ylabel("Calories (kcal)")
 plt.title("Estimated Calorie Burn")
 plt.grid(True)
-plt.savefig(f"calories_vs_time_{safe_folder_name}_{date}.png", dpi=300)
+plt.savefig(f"{OUTPUT_FOLDER}/calories_vs_time_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(12, 4))
@@ -314,7 +528,7 @@ plt.ylabel("MET")
 plt.title("Dynamic MET")
 plt.grid(True)
 plt.legend()
-plt.savefig(f"met_vs_time_{safe_folder_name}_{date}.png", dpi=300)
+plt.savefig(f"{OUTPUT_FOLDER}/met_vs_time_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
 
 plt.figure(figsize=(12, 4))
@@ -324,7 +538,20 @@ plt.ylabel("Speed (m/s)")
 plt.title("Player Speed")
 plt.grid(True)
 plt.legend()
-plt.savefig(f"kalman_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
+plt.savefig(f"{OUTPUT_FOLDER}/kalman_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
+plt.show()
+plt.figure(figsize=(12, 4))
+
+plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_per_min"], linewidth=2, label="Player Load/min")
+
+plt.xlabel("Time (sec)")
+plt.ylabel("PL/min (AU/min)")
+plt.title("Player Load per Minute")
+plt.grid(True)
+plt.legend()
+
+plt.savefig(f"{OUTPUT_FOLDER}/playerload_per_min_{safe_folder_name}_{date}.png", dpi=300)
+
 plt.show()
 
 plt.figure(figsize=(12, 4))
@@ -334,13 +561,12 @@ plt.ylabel("MET")
 plt.title("Swing Rotational MET from Elbow Angular Velocity")
 plt.grid(True)
 plt.legend()
-plt.savefig(f"swing_rot_met_{safe_folder_name}_{date}.png", dpi=300)
+plt.savefig(f"{OUTPUT_FOLDER}/swing_rot_met_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
-
 # =========================
 # Save CSV
 # =========================
-out_csv = f"Player1_trajectory_with_dynamic_MET_{safe_folder_name}_{date}.csv"
+out_csv = f"{OUTPUT_FOLDER}/Player1_trajectory_with_dynamic_MET_{safe_folder_name}_{date}.csv"
 df.to_csv(out_csv, index=False)
 
 print(f"Saved: {out_csv}")

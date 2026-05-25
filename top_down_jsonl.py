@@ -12,8 +12,8 @@ from pathlib import Path
 # 4 cameras in 4 corners, id: 0, 1, 2, 3
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 folder_name = Path(INPUT_PATH).name
 CAM_PAIRS = [(0, 2)]
 num_keypoints = 17
@@ -785,11 +785,27 @@ def draw_front_back_view(points3dP1=None, points3dP2=None):
             px = int(cx - x * scale_vis)
             pz = int(cz - z * scale_vis)
             # homogeneous coordinate for bbox center, should be around (cx, cz) if the points are valid
-            
+            point_color = COLOR_G if i == 0 else COLOR_R
             if j == BodyKpt.Right_Ankle:
                 # cv2.circle(canvas, (px, pz), 5, COLOR_R, -1)
                 cv2.putText(canvas, f"x:{x * scale_real:.2f}, z:{z * scale_real:.2f}", (px + 5, pz - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_W, 1)
             # else:
+            if j == BodyKpt.Right_Ankle:
+                point_color = (0,0,255)      # red
+
+            elif j == BodyKpt.Right_Shoulder:
+                point_color = (255,0,0)      # blue
+
+            cv2.circle(
+                canvas,
+                (px,pz),
+                5 if j in [
+                    BodyKpt.Right_Ankle,
+                    BodyKpt.Right_Shoulder
+                ] else 3,
+                point_color,
+                -1
+            )
             cv2.circle(canvas, (px, pz), 3, COLOR_G if i == 0 else COLOR_R, -1)
     
     return canvas
