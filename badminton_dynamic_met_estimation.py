@@ -35,11 +35,13 @@ weight_kg = 70
 height_m = 1.75
 
 INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+
 VIDEO_A = f"{INPUT_PATH}/CameraReader_0.mp4"
 
 
-#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260520_004440_with_swing.csv"
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260524_182533_with_swing.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260530_233444\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260530_233444_with_swing.csv"
 folder_name = str(Path(csv_path).parent.relative_to(Path(csv_path).parents[1]))
 safe_folder_name = folder_name.replace("\\", "_")
 
@@ -63,6 +65,7 @@ df["time_sec"] = df["frame_id"] / fps
 # =========================
 df["dx"] = df["x"].diff().fillna(0)
 df["dy"] = df["y"].diff().fillna(0)
+df["dz"] = df["z"].diff().fillna(0)
 
 df["dist_m"] = np.sqrt(df["dx"]**2 + df["dy"]**2)
 
@@ -251,6 +254,7 @@ df["MET_movement"] = (
     +
     speed_norm * (BADMINTON_MATCH_MET - BADMINTON_BASE_MET)
 )
+print(df["jump"].value_counts())
 df["MET"] = np.where(df["jump"],JUMP_ROPE_MOD_MET, df["kalman_v"].apply(speed_to_met_compendium))
 df["MET"] = df["MET"] + df["MET_swing_rot"]
 '''df["MET"] = (
@@ -306,7 +310,11 @@ def kalman_1d(z, q=0.01, r=0.05, dt=1/30):
     """
     z = pd.Series(z).interpolate().bfill().ffill().to_numpy()
 
-    x = np.array([z[0], 0.0])
+    if len(z) >= 2:
+        initial_vel = (z[1] - z[0]) / dt
+    else:
+        initial_vel = 0
+    x = np.array([z[0], initial_vel])
     P = np.eye(2)
 
     F = np.array([
@@ -345,6 +353,8 @@ def kalman_1d(z, q=0.01, r=0.05, dt=1/30):
     return np.array(pos), np.array(vel)
 
 
+df["x_orig"] = df["x"]
+df["y_orig"] = df["y"]
 # Kalman smooth x/y/z
 df["x_kf"], _ = kalman_1d(
     df["x"],
@@ -366,14 +376,30 @@ df["z_kf"], _ = kalman_1d(
     r=0.1,
     dt=dt
 )
+'''
 df["vx_kf"] = np.gradient(df["x_kf"], dt)
 df["vy_kf"] = np.gradient(df["y_kf"], dt)
-df["vz_kf"] = np.gradient(df["z_kf"], dt)
+df["vz_kf"] = np.gradient(df["z_kf"], dt)'''
+
+df["vx_diff"] = df["dx"] / dt
+df["vy_diff"] = df["dy"] / dt
+df["vz_diff"] = df["dz"] / dt
+
+#df["ax_diff"] = np.gradient(df["vx_diff"], dt, edge_order=2)
+#df["ay_diff"] = np.gradient(df["vy_diff"], dt, edge_order=2)
+#df["az_diff"] = np.gradient(df["vz_diff"], dt, edge_order=2)
+df["ax_diff"] = df["vx_diff"].diff().fillna(0) / dt
+df["ay_diff"] = df["vy_diff"].diff().fillna(0) / dt
+df["az_diff"] = df["vz_diff"].diff().fillna(0) / dt
+
+df["vx_kf"] = np.gradient(df["x_kf"], dt, edge_order=2)
+df["vy_kf"] = np.gradient(df["y_kf"], dt, edge_order=2)
+df["vz_kf"] = np.gradient(df["z_kf"], dt, edge_order=2)
 
 # acceleration from Kalman velocity
-df["ax_kf"] = np.gradient(df["vx_kf"], dt)
-df["ay_kf"] = np.gradient(df["vy_kf"], dt)
-df["az_kf"] = np.gradient(df["vz_kf"], dt)
+df["ax_kf"] = np.gradient(df["vx_kf"], dt, edge_order=2)
+df["ay_kf"] = np.gradient(df["vy_kf"], dt, edge_order=2)
+df["az_kf"] = np.gradient(df["vz_kf"], dt, edge_order=2)
 
 # smooth acceleration
 for c in ["ax_kf", "ay_kf", "az_kf"]:
@@ -383,31 +409,64 @@ for c in ["ax_kf", "ay_kf", "az_kf"]:
         polyorder=2
     )
 
+df["vx_combined"] = 0.2 * df["vx"] + 0.8 * df["vx_diff"]
+df["vy_combined"] = 0.2 * df["vy"] + 0.8 * df["vy_diff"]
+df["vz_combined"] = 0.2 * df["vz"] + 0.8 * df["vz_diff"]
 # delta acceleration
-df["dax"] = df["ax_kf"].diff().fillna(0)
+'''df["dax"] = df["ax_kf"].diff().fillna(0)
 df["day"] = df["ay_kf"].diff().fillna(0)
-df["daz"] = df["az_kf"].diff().fillna(0)
+df["daz"] = df["az_kf"].diff().fillna(0)'''
+
+df["ax_combined"] = np.gradient(df["vx_combined"], dt, edge_order=2)
+df["ay_combined"] = np.gradient(df["vy_combined"], dt, edge_order=2)
+df["az_combined"] = np.gradient(df["vz_combined"], dt, edge_order=2)
+for c in ["ax_combined", "ay_combined", "az_combined"]:
+    df[c] = savgol_filter(
+        df[c],
+        window_length=11,
+        polyorder=2
+    )
+
+df["dax"] = df["ax_combined"].diff().fillna(0)
+df["day"] = df["ay_combined"].diff().fillna(0)
+df["daz"] = df["az_combined"].diff().fillna(0)
+
+df["ax"] = df["vx"].diff().fillna(0) / dt
+df["ay"] = df["vy"].diff().fillna(0) / dt
+df["az"] = df["vz"].diff().fillna(0) / dt
 
 # Player Load per frame
-# /100: scale to arbitrary units
+# /10: scale to arbitrary units
+
+df["PL_raw"] = (np.sqrt(
+    df["ax_diff"]**2 +df["ay_diff"]**2 + df["az_diff"]**2) / 10000)
+
 df["PL"] = (
     np.sqrt(
         df["dax"]**2 +
         df["day"]**2 +
         df["daz"]**2
     )
-    
+    /100
 )
-
-# remove extreme spikes
+df["PL_raw"] = df["PL_raw"].clip(0, df["PL_raw"].quantile(0.95))
 df["PL"] = df["PL"].clip(
     lower=0,
-    upper=df["PL"].quantile(0.99)
+    upper=df["PL"].quantile(0.95)
 )
+df["PL_norm"] = df["PL"] / df["PL"].quantile(0.95)
+
+df["PL_norm"] = df["PL_norm"].clip(0, 1.0)
+# remove extreme spikes
+'''df["PL"] = df["PL"].clip(
+    lower=0,
+    upper=df["PL"].quantile(0.99)
+)'''
 
 # rolling PL/min
-window_sec = 5
-window = max(1, int(window_sec * fps))
+window_sec = 1
+#window = max(3, int(window_sec * fps))
+window = int(window_sec * fps)
 '''
 df["PL_sum"] = (
     df["PL"]
@@ -427,7 +486,7 @@ df["PL_per_min"] = (
     / df["PL_window_sec"]
     * 60
 )'''
-
+'''
 df["PL_per_min"] = (
     df["PL"]
     .rolling(
@@ -437,6 +496,27 @@ df["PL_per_min"] = (
     )
     .mean()
     * 60
+)'''
+
+df["PL_raw_per_min"] = (
+    df["PL_raw"].rolling(
+        window,
+        center=True,
+        min_periods=1
+    ).sum()
+    / window_sec
+    * 60
+)
+df["PL_per_min"] = (
+    df["PL"]
+    .rolling(
+        window,
+        center=True,
+        min_periods=1
+    )
+    .mean()
+    / window_sec
+    * 60
 )
 # smooth
 df["PL_per_min"] = savgol_filter(
@@ -444,19 +524,36 @@ df["PL_per_min"] = savgol_filter(
     window_length=11, #21 -> 11
     polyorder=2
 )
+df["PL_raw_per_min"] = savgol_filter(
+    df["PL_raw_per_min"],
+    window_length=11,
+    polyorder=2
+)
+df["PL_raw_per_min"] = df["PL_raw_per_min"].clip(
+    0, df["PL_raw_per_min"].quantile(0.99))
 
 df["PL_per_min"] = df["PL_per_min"].clip(
     lower=0,
     upper=df["PL_per_min"].quantile(0.99)
 )
-ignore_sec = 60
-ignore_frames = int(fps * ignore_sec)
+warmup_sec = 1
+warmup_frames  = int(fps * warmup_sec)
 
-df.loc[
-    :ignore_frames,
-    "PL_per_min"
-] = np.nan
+#df.loc[:warmup_frames, "PL_per_min"] = df.loc[:warmup_frames, "PL_raw_per_min"]
+ignore_sec = 0
 valid_time_mask = df["time_sec"] >= ignore_sec
+
+avg_pl_per_min = df["PL_per_min"].mean()
+peak_pl_per_min = df["PL_per_min"].max()
+total_pl = df["PL"].sum()
+
+
+print(f"Average PL/min: {avg_pl_per_min:.2f} AU/min")
+print(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min")
+print(f"Total PL: {total_pl:.2f} AU")
+
+
+
 # acceleration (m/s²)
 '''
 df["ax"] = df["vx"].diff().fillna(0) / dt
@@ -563,6 +660,28 @@ plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/swing_rot_met_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
+
+# =========================
+# Summary Report
+# =========================
+
+summary_txt = f"{OUTPUT_FOLDER}/summary.txt"
+with open(summary_txt, "w") as f:
+    f.write("=====================================\n")
+    f.write("Badminton Motion Analysis Summary\n")
+    f.write("=====================================\n\n")
+
+    f.write(f"FPS: {fps:.2f}\n")
+    f.write(f"Average MET: {avg_met:.2f}\n")
+    f.write(f"Total Calories: {total_kcal:.2f} kcal\n")
+    f.write(f"Average PL/min: {avg_pl_per_min:.2f} AU/min\n")
+    f.write(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min\n")
+    f.write(f"Total PL: {total_pl:.2f} AU\n")
+    f.write(f"Jump frames: {df['jump'].sum()}\n")
+    f.write(f"Swing frames: {df['is_swing'].sum()}\n")
+    #f.write(f"Jump smash frames: {df['is_jump_smash'].sum()}\n")   
+
+
 # =========================
 # Save CSV
 # =========================

@@ -11,9 +11,14 @@ from datetime import datetime
 from pathlib import Path
 # 4 cameras in 4 corners, id: 0, 1, 2, 3
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
+OUTPUT_FOLDER = f"badminton_motion_analysis_{date}"
+Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+input_name = Path(INPUT_PATH).name
+OUTPUT_FOLDER = f"badminton_motion_analysis_{input_name}_{date}"
+Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 folder_name = Path(INPUT_PATH).name
 CAM_PAIRS = [(0, 2)]
 num_keypoints = 17
@@ -364,7 +369,7 @@ for jsonl_file in jsonl_files:
     # Save filled pose CSV
     # ============================
 
-    save_dir = Path( INPUT_PATH) / f"filled_pose_{fill_method}"
+    save_dir = Path(OUTPUT_FOLDER) / f"filled_pose_{fill_method}"
 
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -809,7 +814,298 @@ def draw_front_back_view(points3dP1=None, points3dP2=None):
             cv2.circle(canvas, (px, pz), 3, COLOR_G if i == 0 else COLOR_R, -1)
     
     return canvas
+def draw_side_view(points3dP1=None):
+    sx, sz = 500, 500
+    cx, cz = sx//2, sz//2
 
+    canvas = np.zeros((sz, sx, 3), dtype=np.uint8)
+
+    scale_vis = 80
+
+    # ===== 只保留右手/右側身體 =====
+    side_bones = [
+        (BodyKpt.Right_Shoulder, BodyKpt.Right_Elbow),
+        (BodyKpt.Right_Elbow, BodyKpt.Right_Wrist),
+
+        (BodyKpt.Right_Shoulder, BodyKpt.Right_Hip),
+
+        (BodyKpt.Right_Hip, BodyKpt.Right_Knee),
+        (BodyKpt.Right_Knee, BodyKpt.Right_Ankle),
+    ]
+
+    side_points = [
+        BodyKpt.Right_Shoulder,
+        BodyKpt.Right_Elbow,
+        BodyKpt.Right_Wrist,
+        BodyKpt.Right_Hip,
+        BodyKpt.Right_Knee,
+        BodyKpt.Right_Ankle,
+    ]
+
+    # ===== 畫骨架 =====
+    for b1, b2 in side_bones:
+
+        x1,y1,z1 = points3dP1[b1]
+        x2,y2,z2 = points3dP1[b2]
+
+        if np.isnan([x1,z1,x2,z2]).any():
+            continue
+
+        # 側面看 → Y-Z
+        py1 = int(cx + y1*scale_vis)
+        pz1 = int(cz - z1*scale_vis)
+
+        py2 = int(cx + y2*scale_vis)
+        pz2 = int(cz - z2*scale_vis)
+
+        cv2.line(
+            canvas,
+            (py1,pz1),
+            (py2,pz2),
+            (0,255,255),
+            3
+        )
+
+    # ===== 畫關節 =====
+    for p in side_points:
+
+        x,y,z = points3dP1[p]
+
+        if np.isnan([x,y,z]).any():
+            continue
+        px = int(cx+x*scale_vis)
+        py = int(cx+y*scale_vis)
+        pz = int(cz-z*scale_vis)
+
+        color=(0,255,0)
+
+        if p==BodyKpt.Right_Shoulder:
+            color=(255,0,0)
+
+        elif p==BodyKpt.Right_Wrist:
+            color=(0,0,255)
+
+        cv2.circle(
+            canvas,
+            (py,pz),
+            7,
+            color,
+            -1
+        )
+
+    cv2.putText(
+        canvas,
+        "Right-side view",
+        (20,40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (255,255,255),
+        2
+    )
+
+    return canvas
+
+def draw_3d_side_view(points3dP1, frame_id=None):
+    w, h = 500, 500
+    canvas = np.full((h, w, 3), 255, dtype=np.uint8)
+
+    # ===== 3D view parameters =====
+    '''scale = 70
+    origin = np.array([250, 320])
+    angle_x = np.deg2rad(20)
+    angle_z = np.deg2rad(-35)'''
+    scale = 75
+    origin = np.array([230, 300])
+
+    angle_x = np.deg2rad(18)
+    angle_z = np.deg2rad(-8)
+
+    Rx = np.array([
+        [1, 0, 0],
+        [0, np.cos(angle_x), -np.sin(angle_x)],
+        [0, np.sin(angle_x),  np.cos(angle_x)]
+    ])
+
+    Rz = np.array([
+        [np.cos(angle_z), -np.sin(angle_z), 0],
+        [np.sin(angle_z),  np.cos(angle_z), 0],
+        [0, 0, 1]
+    ])
+
+    R = Rz @ Rx
+    '''
+    def project(p):
+        p = np.asarray(p, dtype=float)
+        q = R @ p
+        return (
+            int(origin[0] + q[0] * scale + 60),
+            int(origin[1] - q[2] * scale -60)
+        )'''
+    def project(p):
+        x, y, z = p
+
+        px = origin[0] + (x - y * 0.55) * scale
+        py = origin[1] - z * scale + y * 0.25 * scale
+
+        return int(px), int(py)
+    # ===== draw grid cube =====
+    grid_color = (200, 180, 255)
+    axis_color = (0, 0, 255)
+    '''
+    x_range = np.linspace(-2, 2, 9)
+    y_range = np.linspace(-2, 2, 9)
+    #z_range = np.linspace(0, 2, 5)
+    z_range = np.linspace(-1, 2, 7)
+    # floor grid z=0
+    for x in x_range:
+        p1 = project([x, -2, 0])
+        p2 = project([x,  2, 0])
+        cv2.line(canvas, p1, p2, grid_color, 1)
+
+    for y in y_range:
+        p1 = project([-2, y, 0])
+        p2 = project([ 2, y, 0])
+        cv2.line(canvas, p1, p2, grid_color, 1)
+
+    # back wall y=2
+    for x in x_range:
+        p1 = project([x, 2, 0])
+        p2 = project([x, 2, 2])
+        cv2.line(canvas, p1, p2, grid_color, 1)
+
+    for z in z_range:
+        p1 = project([-2, 2, z])
+        p2 = project([ 2, 2, z])
+        cv2.line(canvas, p1, p2, grid_color, 1)
+
+    # side wall x=-2
+    for y in y_range:
+        p1 = project([-2, y, 0])
+        p2 = project([-2, y, 2])
+        cv2.line(canvas, p1, p2, grid_color, 1)
+
+    for z in z_range:
+        p1 = project([-2, -2, z])
+        p2 = project([-2,  2, z])
+        cv2.line(canvas, p1, p2, grid_color, 1)'''
+    x_ticks=np.linspace(-2,2,9)
+    y_ticks=np.linspace(-2,2,9)
+    z_ticks=np.linspace(0,2,6)
+
+    # floor z=0
+    for x in x_ticks:
+        cv2.line(
+            canvas,
+            project([x,-2,0]),
+            project([x,2,0]),
+            grid_color,
+            1
+        )
+
+    for y in y_ticks:
+        cv2.line(
+            canvas,
+            project([-2,y,0]),
+            project([2,y,0]),
+            grid_color,
+            1
+        )
+
+    # back wall y=2
+    for x in x_ticks:
+        cv2.line(
+            canvas,
+            project([x,2,0]),
+            project([x,2,2]),
+            grid_color,
+            1
+        )
+
+    for z in z_ticks:
+        cv2.line(
+            canvas,
+            project([-2,2,z]),
+            project([2,2,z]),
+            grid_color,
+            1
+        )
+    # ===== selected dominant hand / right side skeleton =====
+    right_bones = [
+        (BodyKpt.Right_Shoulder, BodyKpt.Right_Elbow),
+        (BodyKpt.Right_Elbow, BodyKpt.Right_Wrist),
+        (BodyKpt.Right_Shoulder, BodyKpt.Right_Hip),
+        (BodyKpt.Right_Hip, BodyKpt.Right_Knee),
+        (BodyKpt.Right_Knee, BodyKpt.Right_Ankle),
+    ]
+
+    right_points = [
+        BodyKpt.Right_Shoulder,
+        BodyKpt.Right_Elbow,
+        BodyKpt.Right_Wrist,
+        BodyKpt.Right_Hip,
+        BodyKpt.Right_Knee,
+        BodyKpt.Right_Ankle,
+    ]
+
+    # move player near center
+    #center = points3dP1[BodyKpt.Right_Hip].copy()
+    center = np.nanmean(np.vstack([
+        points3dP1[BodyKpt.Right_Shoulder],
+        points3dP1[BodyKpt.Right_Hip],  
+    ]), axis=0)
+
+    for b1, b2 in right_bones:
+        p1 = points3dP1[b1] - center
+        p2 = points3dP1[b2] - center
+
+        if np.isnan(p1).any() or np.isnan(p2).any():
+            continue
+
+        cv2.line(
+            canvas,
+            project(p1),
+            project(p2),
+            (255, 0, 255),
+            3
+        )
+
+    for p in right_points:
+        pt = points3dP1[p] - center
+
+        if np.isnan(pt).any():
+            continue
+
+        color = (255, 0, 255)
+
+        if p == BodyKpt.Right_Shoulder:
+            color = (255, 0, 0)
+        elif p == BodyKpt.Right_Wrist:
+            color = (0, 0, 255)
+
+        cv2.circle(
+            canvas,
+            project(pt),
+            5,
+            color,
+            -1
+        )
+
+    if frame_id is not None:
+        cv2.putText(
+            canvas,
+            f"{frame_id}",
+            (230, 35),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            axis_color,
+            2
+        )
+
+    cv2.putText(canvas, "x", (250, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, axis_color, 1)
+    cv2.putText(canvas, "y", (430, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.5, axis_color, 1)
+    cv2.putText(canvas, "z", (420, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, axis_color, 1)
+
+    return canvas
 # Function to draw the virtual badminton court
 def draw_virtual_court(frame, projMtx):
     for i in range(0, len(court_3d), 2):
@@ -1049,21 +1345,21 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     fps_out = 30
     writer_camA = cv2.VideoWriter(
-        f"CameraA_{player_anchor}_{folder_name}_{date}.mp4",
+        f"{OUTPUT_FOLDER}/CameraA_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         (frameAS.shape[1], frameAS.shape[0])
     )
 
     writer_camB = cv2.VideoWriter(
-        f"CameraB_{player_anchor}_{folder_name}_{date}.mp4",
+        f"{OUTPUT_FOLDER}/CameraB_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         (frameBS.shape[1], frameBS.shape[0])
     )
 
     writer_top = cv2.VideoWriter(
-        f"TopView_{player_anchor}_{folder_name}_{date}.mp4",
+        f"{OUTPUT_FOLDER}/TopView_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         #(400, 800)
@@ -1071,10 +1367,16 @@ def main():
     )
 
     writer_front = cv2.VideoWriter(
-        f"FrontBackView_{player_anchor}_{folder_name}_{date}.mp4",
+        f"{OUTPUT_FOLDER}/FrontBackView_{player_anchor}_{folder_name}_{date}.mp4",
         fourcc,
         fps_out,
         (400, 400)
+    )
+    writer_side = cv2.VideoWriter(
+        f"{OUTPUT_FOLDER}/SideView_{player_anchor}_{folder_name}_{date}.mp4",
+        fourcc,
+        fps_out,
+        (500, 500)
     )
 
     while True:
@@ -1320,15 +1622,18 @@ def main():
         draw_virtual_court(frameA, debug_projMtxs[0])
         draw_virtual_court(frameB, debug_projMtxs[1])
         front_back_view = draw_front_back_view(points_3d_P1[0])
+        #side_view = draw_side_view(points_3d_P1[0])
+        side_view = draw_3d_side_view(points_3d_P1[0], frame_id)
         writer_camA.write(frameA)
         writer_camB.write(frameB)
         writer_top.write(top_view)
         writer_front.write(front_back_view)
+        writer_side.write(side_view)
 
         cv2.imshow("Camera A", frameA)
         cv2.imshow("Camera B", frameB)
         cv2.imshow("Top View", top_view)
-      
+        cv2.imshow("Side View", side_view)
 
         # Show images
         cv2.imshow("Front/Back View", front_back_view)
@@ -1345,8 +1650,8 @@ def main():
     df_P1 = pd.DataFrame(trajectory_P1)
     df_P2 = pd.DataFrame(trajectory_P2)
 
-    df_P1.to_csv(f"Player1_trajectory_{player_anchor}_{folder_name}_{date}.csv", index=False)
-    df_P2.to_csv(f"Player2_trajectory_{player_anchor}_{folder_name}_{date}.csv", index=False)
+    df_P1.to_csv(f"{OUTPUT_FOLDER}/Player1_trajectory_{player_anchor}_{folder_name}_{date}.csv", index=False)
+    df_P2.to_csv(f"{OUTPUT_FOLDER}/Player2_trajectory_{player_anchor}_{folder_name}_{date}.csv", index=False)
 
     print(f"Saved Player1_trajectory_{date}.csv")
     print(f"Saved Player2_trajectory_{date}.csv")
