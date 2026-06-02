@@ -6,13 +6,18 @@ from scipy.signal import savgol_filter
 from pathlib import Path
 from datetime import datetime
 
+
+RAW_WEIGHT = 0.5
+KF_WEIGHT = 1.0 - RAW_WEIGHT
+
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
-OUTPUT_FOLDER = f"output_dynamic_MET_{date}"
+OUTPUT_FOLDER = f"output_dynamic_MET_{RAW_WEIGHT}_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
 JUMP_ROPE_SLOW_MET = 8.3
 JUMP_ROPE_MOD_MET = 11.8
 JUMP_ROPE_FAST_MET = 12.3
+
 
 
 # From 2024 Adult Compendium of Physical Activities - Running
@@ -84,15 +89,19 @@ df["speed_mps"] = savgol_filter(
 )
 
 df["kalman_v"] = np.sqrt(df["vx"]**2 + df["vy"]**2)
-df["kalman_v"] = 0.2 * df["kalman_v"] + 0.8 * df["speed_mps"]
+df["speed_fused_mps"] = KF_WEIGHT * df["kalman_v"] + RAW_WEIGHT * df["speed_mps"]
 
-df["kalman_v"] = savgol_filter(
-    df["kalman_v"],
+df["speed_fused_mps"] = savgol_filter(
+    df["speed_fused_mps"],
     window_length=21,
     polyorder=2
 )
 
-df["speed_kmh"] = df["kalman_v"] * 3.6
+df["speed_kmh"] = df["speed_fused_mps"] * 3.6
+
+total_distance = df["dist_m"].sum()
+avg_speed = df["speed_fused_mps"].mean()
+peak_speed = df["speed_fused_mps"].max()
 
 # =========================
 # Jump detection
@@ -247,7 +256,7 @@ BADMINTON_BASE_MET = 5.5
 BADMINTON_MATCH_MET = 9.0
 
 
-speed_norm = df["kalman_v"].clip(0, 3) / 3
+speed_norm = df["speed_fused_mps"].clip(0, 3) / 3
 
 df["MET_movement"] = (
     BADMINTON_BASE_MET
@@ -255,7 +264,7 @@ df["MET_movement"] = (
     speed_norm * (BADMINTON_MATCH_MET - BADMINTON_BASE_MET)
 )
 print(df["jump"].value_counts())
-df["MET"] = np.where(df["jump"],JUMP_ROPE_MOD_MET, df["kalman_v"].apply(speed_to_met_compendium))
+df["MET"] = np.where(df["jump"],JUMP_ROPE_MOD_MET, df["speed_fused_mps"].apply(speed_to_met_compendium))
 df["MET"] = df["MET"] + df["MET_swing_rot"]
 '''df["MET"] = (
     df["MET_movement"]
@@ -409,9 +418,9 @@ for c in ["ax_kf", "ay_kf", "az_kf"]:
         polyorder=2
     )
 
-df["vx_combined"] = 0.2 * df["vx"] + 0.8 * df["vx_diff"]
-df["vy_combined"] = 0.2 * df["vy"] + 0.8 * df["vy_diff"]
-df["vz_combined"] = 0.2 * df["vz"] + 0.8 * df["vz_diff"]
+df["vx_combined"] = KF_WEIGHT * df["vx"] + RAW_WEIGHT * df["vx_diff"]
+df["vy_combined"] = KF_WEIGHT * df["vy"] + RAW_WEIGHT * df["vy_diff"]
+df["vz_combined"] = KF_WEIGHT * df["vz"] + RAW_WEIGHT * df["vz_diff"]
 # delta acceleration
 '''df["dax"] = df["ax_kf"].diff().fillna(0)
 df["day"] = df["ay_kf"].diff().fillna(0)
@@ -507,8 +516,7 @@ df["PL_raw_per_min"] = (
     / window_sec
     * 60
 )
-df["PL_per_min"] = (
-    df["PL"]
+df["PL_per_min"] = (df["PL"]
     .rolling(
         window,
         center=True,
@@ -547,6 +555,8 @@ avg_pl_per_min = df["PL_per_min"].mean()
 peak_pl_per_min = df["PL_per_min"].max()
 total_pl = df["PL"].sum()
 
+peak_idx = df["PL_per_min"].idxmax()
+peak_idx_info = df.loc[peak_idx, ["frame_id", "time_sec", "PL_per_min", "MET"]]
 
 print(f"Average PL/min: {avg_pl_per_min:.2f} AU/min")
 print(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min")
@@ -629,13 +639,13 @@ plt.savefig(f"{OUTPUT_FOLDER}/met_vs_time_{safe_folder_name}_{date}.png", dpi=30
 plt.show()
 
 plt.figure(figsize=(12, 4))
-plt.plot(df["time_sec"], df["kalman_v"], linewidth=2, label="Kalman Speed")
+plt.plot(df["time_sec"], df["speed_fused_mps"], linewidth=2, label="Fused Speed")
 plt.xlabel("Time (sec)")
 plt.ylabel("Speed (m/s)")
 plt.title("Player Speed")
 plt.grid(True)
 plt.legend()
-plt.savefig(f"{OUTPUT_FOLDER}/kalman_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
+plt.savefig(f"{OUTPUT_FOLDER}/fused_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
 plt.figure(figsize=(12, 4))
 
@@ -679,7 +689,13 @@ with open(summary_txt, "w") as f:
     f.write(f"Total PL: {total_pl:.2f} AU\n")
     f.write(f"Jump frames: {df['jump'].sum()}\n")
     f.write(f"Swing frames: {df['is_swing'].sum()}\n")
-    #f.write(f"Jump smash frames: {df['is_jump_smash'].sum()}\n")   
+    f.write(f"Total Distance: {total_distance:.2f} m\n")
+    f.write(f"Average Speed: {avg_speed:.2f} m/s\n")
+    f.write(f"Peak Speed: {peak_speed:.2f} m/s\n")
+    f.write(f"Peak PL Time: {peak_idx_info['time_sec']:.2f} sec\n")
+    f.write(f"Peak MET: {peak_idx_info['MET']:.2f}\n")
+    #f.write(f"Jump smash frames: {df['is_jump_smash'].sum()}\n")
+    print(f"Saved: {summary_txt}")
 
 
 # =========================
