@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-RAW_WEIGHT = 0.5
+RAW_WEIGHT = 0.8
 KF_WEIGHT = 1.0 - RAW_WEIGHT
 
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -235,7 +235,7 @@ df["rot_energy_J"] = np.where(
     0
 )
 
-ETA = 0.10
+ETA = 0.15 # efficiency factor to convert mechanical energy to metabolic energy, 0.10 -> 0.15
 
 df["rot_metabolic_J"] = df["rot_energy_J"] / ETA
 df["rot_power_W"] = df["rot_metabolic_J"] / dt
@@ -463,6 +463,11 @@ df["PL"] = df["PL"].clip(
     lower=0,
     upper=df["PL"].quantile(0.95)
 )
+df["PL"] = savgol_filter(
+    df["PL"],
+    window_length=11,
+    polyorder=2
+)
 df["PL_norm"] = df["PL"] / df["PL"].quantile(0.95)
 
 df["PL_norm"] = df["PL_norm"].clip(0, 1.0)
@@ -507,8 +512,8 @@ df["PL_per_min"] = (
     * 60
 )'''
 
-df["PL_raw_per_min"] = (
-    df["PL_raw"].rolling(
+df["PL_catapult_per_min"] = (
+    df["PL"].rolling(
         window,
         center=True,
         min_periods=1
@@ -516,6 +521,17 @@ df["PL_raw_per_min"] = (
     / window_sec
     * 60
 )
+total_pl = df["PL"].sum()
+
+pl_per_min_catapult = (
+    total_pl
+    /
+    (df["time_sec"].iloc[-1] / 60)
+)
+
+print(f"Total PL: {total_pl:.2f} AU")
+print(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min")
+
 df["PL_per_min"] = (df["PL"]
     .rolling(
         window,
@@ -532,13 +548,13 @@ df["PL_per_min"] = savgol_filter(
     window_length=11, #21 -> 11
     polyorder=2
 )
-df["PL_raw_per_min"] = savgol_filter(
-    df["PL_raw_per_min"],
+df["PL_catapult_per_min"] = savgol_filter(
+    df["PL_catapult_per_min"],
     window_length=11,
     polyorder=2
 )
-df["PL_raw_per_min"] = df["PL_raw_per_min"].clip(
-    0, df["PL_raw_per_min"].quantile(0.99))
+df["PL_catapult_per_min"] = df["PL_catapult_per_min"].clip(
+    0, df["PL_catapult_per_min"].quantile(0.99))
 
 df["PL_per_min"] = df["PL_per_min"].clip(
     lower=0,
@@ -553,14 +569,28 @@ valid_time_mask = df["time_sec"] >= ignore_sec
 
 avg_pl_per_min = df["PL_per_min"].mean()
 peak_pl_per_min = df["PL_per_min"].max()
-total_pl = df["PL"].sum()
+#total_pl = df["PL"].sum()
 
 peak_idx = df["PL_per_min"].idxmax()
 peak_idx_info = df.loc[peak_idx, ["frame_id", "time_sec", "PL_per_min", "MET"]]
 
+
 print(f"Average PL/min: {avg_pl_per_min:.2f} AU/min")
 print(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min")
 print(f"Total PL: {total_pl:.2f} AU")
+
+avg_pl_catapult_per_min = df["PL_catapult_per_min"].mean()
+peak_pl_catapult_per_min = df["PL_catapult_per_min"].max()
+total_pl_catapult = df["PL_catapult_per_min"].sum()
+
+peak_idx = df["PL_catapult_per_min"].idxmax()
+peak_idx_info = df.loc[peak_idx, ["frame_id", "time_sec", "PL_catapult_per_min", "MET"]]
+
+
+print(f"Average PL/min: {avg_pl_catapult_per_min:.2f} AU/min")
+print(f"Peak PL/min: {peak_pl_catapult_per_min:.2f} AU/min")
+print(f"Total PL: {total_pl_catapult:.2f} AU")
+
 
 
 
@@ -647,18 +677,15 @@ plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/fused_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
+
 plt.figure(figsize=(12, 4))
-
 plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_per_min"], linewidth=2, label="Player Load/min")
-
 plt.xlabel("Time (sec)")
 plt.ylabel("PL/min (AU/min)")
 plt.title("Player Load per Minute")
 plt.grid(True)
 plt.legend()
-
 plt.savefig(f"{OUTPUT_FOLDER}/playerload_per_min_{safe_folder_name}_{date}.png", dpi=300)
-
 plt.show()
 
 plt.figure(figsize=(12, 4))
@@ -669,6 +696,32 @@ plt.title("Swing Rotational MET from Elbow Angular Velocity")
 plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/swing_rot_met_{safe_folder_name}_{date}.png", dpi=300)
+plt.show()
+
+plt.figure(figsize=(12, 4))
+plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_catapult_per_min"], linewidth=2, label="Player Load/min")
+plt.xlabel("Time (sec)")  
+plt.ylabel("PL_Catapult/min (AU/min)")
+plt.title("Player Load per Minute")
+plt.grid(True)
+plt.legend()
+plt.savefig(f"{OUTPUT_FOLDER}/playerload_catapult_per_min_{safe_folder_name}_{date}.png", dpi=300)
+plt.show()
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["PL"],
+    linewidth=1
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("PL (AU)")
+plt.title("Instantaneous Player Load")
+plt.grid(True)
+plt.savefig(
+    f"{OUTPUT_FOLDER}/playerload_vs_time.png",
+    dpi=300
+)
 plt.show()
 
 # =========================
@@ -687,6 +740,9 @@ with open(summary_txt, "w") as f:
     f.write(f"Average PL/min: {avg_pl_per_min:.2f} AU/min\n")
     f.write(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min\n")
     f.write(f"Total PL: {total_pl:.2f} AU\n")
+    f.write(f"Average PL/min (Catapult): {avg_pl_catapult_per_min:.2f} AU/min\n")
+    f.write(f"Peak PL/min (Catapult): {peak_pl_catapult_per_min:.2f} AU/min\n")
+    f.write(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min\n")
     f.write(f"Jump frames: {df['jump'].sum()}\n")
     f.write(f"Swing frames: {df['is_swing'].sum()}\n")
     f.write(f"Total Distance: {total_distance:.2f} m\n")
