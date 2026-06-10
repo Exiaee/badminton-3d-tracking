@@ -45,8 +45,10 @@ INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 VIDEO_A = f"{INPUT_PATH}/CameraReader_0.mp4"
 
 
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260530_233444\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260530_233444_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260610_014941\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260610_014941_with_swing.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712_with_swing.csv"
 folder_name = str(Path(csv_path).parent.relative_to(Path(csv_path).parents[1]))
 safe_folder_name = folder_name.replace("\\", "_")
 
@@ -432,7 +434,7 @@ df["az_combined"] = np.gradient(df["vz_combined"], dt, edge_order=2)
 for c in ["ax_combined", "ay_combined", "az_combined"]:
     df[c] = savgol_filter(
         df[c],
-        window_length=11,
+        window_length=21,
         polyorder=2
     )
 
@@ -450,14 +452,8 @@ df["az"] = df["vz"].diff().fillna(0) / dt
 df["PL_raw"] = (np.sqrt(
     df["ax_diff"]**2 +df["ay_diff"]**2 + df["az_diff"]**2) / 10000)
 
-df["PL"] = (
-    np.sqrt(
-        df["dax"]**2 +
-        df["day"]**2 +
-        df["daz"]**2
-    )
-    /100
-)
+df["PL"] = (np.sqrt(df["dax"]**2 + df["day"]**2 + df["daz"]**2) / 100)
+
 df["PL_raw"] = df["PL_raw"].clip(0, df["PL_raw"].quantile(0.95))
 df["PL"] = df["PL"].clip(
     lower=0,
@@ -465,7 +461,7 @@ df["PL"] = df["PL"].clip(
 )
 df["PL"] = savgol_filter(
     df["PL"],
-    window_length=11,
+    window_length=21,
     polyorder=2
 )
 df["PL_norm"] = df["PL"] / df["PL"].quantile(0.95)
@@ -500,7 +496,7 @@ df["PL_per_min"] = (
     / df["PL_window_sec"]
     * 60
 )'''
-'''
+
 df["PL_per_min"] = (
     df["PL"]
     .rolling(
@@ -510,7 +506,7 @@ df["PL_per_min"] = (
     )
     .mean()
     * 60
-)'''
+)
 
 df["PL_catapult_per_min"] = (
     df["PL"].rolling(
@@ -526,7 +522,7 @@ total_pl = df["PL"].sum()
 pl_per_min_catapult = (
     total_pl
     /
-    (df["time_sec"].iloc[-1] / 60)
+    (df["time_sec"].iloc[-1] / 60)/100
 )
 
 print(f"Total PL: {total_pl:.2f} AU")
@@ -575,24 +571,65 @@ peak_idx = df["PL_per_min"].idxmax()
 peak_idx_info = df.loc[peak_idx, ["frame_id", "time_sec", "PL_per_min", "MET"]]
 
 
-print(f"Average PL/min: {avg_pl_per_min:.2f} AU/min")
-print(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min")
-print(f"Total PL: {total_pl:.2f} AU")
+#print(f"Average PL/min: {avg_pl_per_min:.2f} AU/min")
+#print(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min")
+#print(f"Total PL: {total_pl:.2f} AU")
 
-avg_pl_catapult_per_min = df["PL_catapult_per_min"].mean()
-peak_pl_catapult_per_min = df["PL_catapult_per_min"].max()
+#avg_pl_catapult_per_min = df["PL_catapult_per_min"].mean()
+#peak_pl_catapult_per_min = df["PL_catapult_per_min"].max()
 total_pl_catapult = df["PL_catapult_per_min"].sum()
 
 peak_idx = df["PL_catapult_per_min"].idxmax()
 peak_idx_info = df.loc[peak_idx, ["frame_id", "time_sec", "PL_catapult_per_min", "MET"]]
 
+avg_pl_catapult_per_min = df["PL"].mean()
+peak_pl_catapult_per_min = df["PL"].max()
 
-print(f"Average PL/min: {avg_pl_catapult_per_min:.2f} AU/min")
-print(f"Peak PL/min: {peak_pl_catapult_per_min:.2f} AU/min")
-print(f"Total PL: {total_pl_catapult:.2f} AU")
+#print(f"Average PL: {avg_pl_catapult_per_min:.2f} AU")
+print(f"Peak PL: {peak_pl_catapult_per_min:.2f} AU")
+#print(f"Total PL: {total_pl_catapult:.2f} AU")
 
+acc_mag = np.sqrt(
+    df["ax_combined"]**2 +
+    df["ay_combined"]**2 +
+    df["az_combined"]**2
+)
 
+df["MAD"] = (
+    acc_mag
+    .rolling(
+        window,
+        center=True,
+        min_periods=1
+    )
+    .apply(
+        lambda x:
+            np.mean(
+                np.abs(
+                    x - np.mean(x)
+                )
+            ),
+        raw=True
+    )
+)
 
+df["MAD_Center_False"] = (
+    acc_mag
+    .rolling(
+        window,
+        center=False,
+        min_periods=1
+    )
+    .apply(
+        lambda x:
+            np.mean(
+                np.abs(
+                    x - np.mean(x)
+                )
+            ),
+        raw=True
+    )
+)
 
 # acceleration (m/s²)
 '''
@@ -646,6 +683,169 @@ print(f"Jump frames: {df['jump'].sum()}")
 print(f"Swing frames: {df['is_swing'].sum()}")
 #print(f"Jump smash frames: {df['is_jump_smash'].sum()}")
 
+# =========================================================
+# HIP-based Speed / Acceleration / PL / MAD
+# =========================================================
+
+# Hip velocity
+df["speed_hip_mps"] = np.sqrt(
+    df["vx_hip"]**2 +
+    df["vy_hip"]**2
+)
+
+df["vx_hip_diff"] = np.gradient(df["x_hip"], dt)
+df["vy_hip_diff"] = np.gradient(df["y_hip"], dt)
+df["vz_hip_diff"] = np.gradient(df["z_hip"], dt)
+
+df["vx_hip_combined"] = KF_WEIGHT * df["vx_hip"] + RAW_WEIGHT * df["vx_hip_diff"]
+df["vy_hip_combined"] = KF_WEIGHT * df["vy_hip"] + RAW_WEIGHT * df["vy_hip_diff"]
+df["vz_hip_combined"] = KF_WEIGHT * df["vz_hip"] + RAW_WEIGHT * df["vz_hip_diff"]
+
+# Hip acceleration
+df["ax_hip"] = np.gradient(
+    df["vx_hip"],
+    dt,
+    edge_order=2
+)
+
+df["ay_hip"] = np.gradient(
+    df["vy_hip"],
+    dt,
+    edge_order=2
+)
+
+df["az_hip"] = np.gradient(
+    df["vz_hip"],
+    dt,
+    edge_order=2
+)
+
+df["ax_hip_combined"] = np.gradient(
+    df["vx_hip_combined"],
+    dt,
+    edge_order=2
+)
+df["ay_hip_combined"] = np.gradient(
+    df["vy_hip_combined"],
+    dt,
+    edge_order=2
+)
+
+df["az_hip_combined"] = np.gradient(
+    df["vz_hip_combined"],
+    dt,
+    edge_order=2
+)
+
+for c in ["ax_hip", "ay_hip", "az_hip"]:
+    df[c] = savgol_filter(
+        df[c],
+        window_length=21,
+        polyorder=2
+    )
+
+for c in ["ax_hip_combined", "ay_hip_combined", "az_hip_combined"]:
+    df[c] = savgol_filter(
+        df[c],
+        window_length=21,
+        polyorder=2
+    )
+
+# Hip jerk
+df["dax_hip"] = df["ax_hip"].diff().fillna(0)
+df["day_hip"] = df["ay_hip"].diff().fillna(0)
+df["daz_hip"] = df["az_hip"].diff().fillna(0)
+
+df["dax_hip_combined"] = df["ax_hip_combined"].diff().fillna(0)
+df["day_hip_combined"] = df["ay_hip_combined"].diff().fillna(0)
+df["daz_hip_combined"] = df["az_hip_combined"].diff().fillna(0)
+# Hip Player Load
+df["PL_hip"] = np.sqrt(
+    df["dax_hip"]**2 +
+    df["day_hip"]**2 +
+    df["daz_hip"]**2
+)/100
+
+df["PL_hip_combined"] = np.sqrt(
+    df["dax_hip_combined"]**2 +
+    df["day_hip_combined"]**2 +
+    df["daz_hip_combined"]**2
+)/100
+
+
+df["PL_hip"] = df["PL_hip"].clip(
+    lower=0,
+    upper=df["PL_hip"].quantile(0.95)
+)
+
+df["PL_hip_combined"] = df["PL_hip_combined"].clip(
+    lower=0,
+    upper=df["PL_hip_combined"].quantile(0.95)
+)
+
+df["PL_hip"] = savgol_filter(
+    df["PL_hip"],
+    window_length=21,
+    polyorder=2
+)
+
+
+df["PL_hip_combined"] = savgol_filter(
+    df["PL_hip_combined"],
+    window_length=21,
+    polyorder=2
+)
+
+# Hip acceleration magnitude
+acc_mag_hip = np.sqrt(
+    df["ax_hip"]**2 +
+    df["ay_hip"]**2 +
+    df["az_hip"]**2
+)
+#print(acc_mag_hip.describe())
+
+# Hip MAD
+df["MAD_hip"] = (
+    acc_mag_hip
+    .rolling(
+        window,
+        center=True,
+        min_periods=1
+    )
+    .apply(
+        lambda x: np.mean(
+            np.abs(
+                x - np.mean(x)
+            )
+        ),
+        raw=True
+    )
+)
+
+acc_combined_mag_hip = np.sqrt(
+    df["ax_hip_combined"]**2 +
+    df["ay_hip_combined"]**2 +
+    df["az_hip_combined"]**2
+)
+
+# Hip MAD
+df["MAD_hip_combined"] = (
+    acc_combined_mag_hip
+    .rolling(
+        window,
+        center=True,
+        min_periods=1
+    )
+    .apply(
+        lambda x: np.mean(
+            np.abs(
+                x - np.mean(x)
+            )
+        ),
+        raw=True
+    )
+)
+
 # =========================
 # Plots
 # =========================
@@ -678,6 +878,7 @@ plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/fused_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
 
+'''
 plt.figure(figsize=(12, 4))
 plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_per_min"], linewidth=2, label="Player Load/min")
 plt.xlabel("Time (sec)")
@@ -686,7 +887,7 @@ plt.title("Player Load per Minute")
 plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/playerload_per_min_{safe_folder_name}_{date}.png", dpi=300)
-plt.show()
+plt.show()'''
 
 plt.figure(figsize=(12, 4))
 plt.plot(df["time_sec"], df["MET_swing_rot"], linewidth=2, label="Swing Rotational MET")
@@ -697,7 +898,7 @@ plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/swing_rot_met_{safe_folder_name}_{date}.png", dpi=300)
 plt.show()
-
+'''
 plt.figure(figsize=(12, 4))
 plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_catapult_per_min"], linewidth=2, label="Player Load/min")
 plt.xlabel("Time (sec)")  
@@ -706,7 +907,7 @@ plt.title("Player Load per Minute")
 plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/playerload_catapult_per_min_{safe_folder_name}_{date}.png", dpi=300)
-plt.show()
+plt.show()'''
 
 plt.figure(figsize=(12,4))
 plt.plot(
@@ -724,6 +925,131 @@ plt.savefig(
 )
 plt.show()
 
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["MAD"],
+    linewidth=1,
+    color="blue",
+    label="MAD Center True",
+)
+plt.plot(
+    df["time_sec"],
+    df["MAD_Center_False"],
+    linewidth=1,
+    color="orange",
+    label="MAD Center False"
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("MAD (AU)")
+plt.title(" Mean Absolute Deviation of Acceleration")
+plt.legend()
+plt.grid(True)
+plt.savefig(
+    f"{OUTPUT_FOLDER}/mad_vs_time.png",
+    dpi=300
+)
+plt.show()
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["PL"],
+    label="Ankle PL"
+)
+plt.plot(
+    df["time_sec"],
+    df["PL_hip"],
+    label="Hip PL"
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("PL")
+plt.title("Ankle vs Hip Player Load")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/pl_ankle_vs_hip.png",
+    dpi=300
+)
+plt.show()
+
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["PL"],
+    label="Ankle PL"
+)
+plt.plot(
+    df["time_sec"],
+    df["PL_hip_combined"],
+    label="Hip PL Combined"
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("PL")
+plt.title("Ankle vs Hip_Combined Player Load")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/pl_ankle_vs_hip_combined.png",
+    dpi=300
+)
+plt.show()
+
+plt.figure(figsize=(12,4))
+'''plt.plot(
+    df["time_sec"],
+    df["MAD"],
+    label="Ankle MAD"
+)'''
+
+plt.plot(
+    df["time_sec"],
+    df["MAD_hip"],
+    label="Hip MAD"
+)
+
+plt.xlabel("Time (sec)")
+plt.ylabel("MAD")
+plt.title("Hip MAD")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/mad_hip.png",
+    dpi=300
+)
+
+plt.show()
+
+
+
+plt.figure(figsize=(12,4))
+
+plt.plot(
+    df["time_sec"],
+    df["MAD_hip_combined"],
+    label="Hip MAD Combined"
+)
+
+plt.xlabel("Time (sec)")
+plt.ylabel("MAD")
+plt.title("Hip MAD Combined")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/mad_hip_combined.png",
+    dpi=300
+)
+
+plt.show()
+
+
+
 # =========================
 # Summary Report
 # =========================
@@ -737,11 +1063,11 @@ with open(summary_txt, "w") as f:
     f.write(f"FPS: {fps:.2f}\n")
     f.write(f"Average MET: {avg_met:.2f}\n")
     f.write(f"Total Calories: {total_kcal:.2f} kcal\n")
-    f.write(f"Average PL/min: {avg_pl_per_min:.2f} AU/min\n")
-    f.write(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min\n")
+    #f.write(f"Average PL/min: {avg_pl_per_min:.2f} AU/min\n")
+    #f.write(f"Peak PL/min: {peak_pl_per_min:.2f} AU/min\n")
     f.write(f"Total PL: {total_pl:.2f} AU\n")
-    f.write(f"Average PL/min (Catapult): {avg_pl_catapult_per_min:.2f} AU/min\n")
-    f.write(f"Peak PL/min (Catapult): {peak_pl_catapult_per_min:.2f} AU/min\n")
+    #f.write(f"Average PL (Catapult): {avg_pl_catapult_per_min:.2f} AU\n")
+    f.write(f"Peak PL (Catapult): {peak_pl_catapult_per_min:.2f} AU\n")
     f.write(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min\n")
     f.write(f"Jump frames: {df['jump'].sum()}\n")
     f.write(f"Swing frames: {df['is_swing'].sum()}\n")

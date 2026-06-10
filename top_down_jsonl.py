@@ -14,8 +14,8 @@ date = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_FOLDER = f"badminton_motion_analysis_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 input_name = Path(INPUT_PATH).name
 OUTPUT_FOLDER = f"badminton_motion_analysis_{input_name}_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -1533,7 +1533,19 @@ def main():
             left_wrist = filtered_points[BodyKpt.Left_Wrist]
             left_elbow_angle = angle_3d(left_shoulder, left_elbow, left_wrist)
 
-       
+            left_hip = filtered_points[BodyKpt.Left_Hip]
+            right_hip = filtered_points[BodyKpt.Right_Hip]
+            player_pos_hip = np.nanmean(
+                np.vstack([left_hip, right_hip]),
+                axis=0
+            )
+            left_v_hip = velocities[BodyKpt.Left_Hip]
+            right_v_hip = velocities[BodyKpt.Right_Hip]
+            player_v_hip = np.nanmean(
+                np.vstack([left_v_hip, right_v_hip]),
+                axis=0
+            )
+
             left_ankle = filtered_points[BodyKpt.Left_Ankle]
             right_ankle = filtered_points[BodyKpt.Right_Ankle]
             #left_ankle = smoothed_points[BodyKpt.Left_Ankle]
@@ -1590,7 +1602,13 @@ def main():
                 "left_elbow_angle (deg)": left_elbow_angle,
                 "jump": is_jump,
                 "speed_mps": speed_mps,
-                "speed_kmh": speed_kmh
+                "speed_kmh": speed_kmh,
+                "x_hip": player_pos_hip[0],
+                "y_hip": player_pos_hip[1],
+                "z_hip": player_pos_hip[2],
+                "vx_hip": player_v_hip[0],
+                "vy_hip": player_v_hip[1],
+                "vz_hip": player_v_hip[2]
             }
 
             if i == 0:
