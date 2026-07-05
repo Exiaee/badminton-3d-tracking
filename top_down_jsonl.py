@@ -1526,6 +1526,7 @@ def main():
             right_shoulder = filtered_points[BodyKpt.Right_Shoulder]
             right_elbow = filtered_points[BodyKpt.Right_Elbow]
             right_wrist = filtered_points[BodyKpt.Right_Wrist]
+            right_wrist_vel = velocities[BodyKpt.Right_Wrist]
             right_elbow_angle = angle_3d(right_shoulder, right_elbow, right_wrist)
 
             left_shoulder = filtered_points[BodyKpt.Left_Shoulder]
@@ -1598,6 +1599,12 @@ def main():
                 "vx": player_v[0],
                 "vy": player_v[1],
                 "vz": player_v[2],
+                "right_wrist_x": right_wrist[0],
+                "right_wrist_y": right_wrist[1],
+                "right_wrist_z": right_wrist[2],
+                "right_wrist_vel_x": right_wrist_vel[0],
+                "right_wrist_vel_y": right_wrist_vel[1],
+                "right_wrist_vel_z": right_wrist_vel[2],
                 "right_elbow_angle (deg)": right_elbow_angle,
                 "left_elbow_angle (deg)": left_elbow_angle,
                 "jump": is_jump,

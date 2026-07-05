@@ -5,8 +5,12 @@ import cv2
 from scipy.signal import savgol_filter
 from pathlib import Path
 from datetime import datetime
+import argparse
 
-
+parser = argparse.ArgumentParser(description="Badminton Dynamic MET Estimation")
+parser.add_argument("--height", type=float, default=1.70, help="Height of the player in meters")
+parser.add_argument("--weight", type=float, default=65.0, help="Weight of the player in kg")
+args = parser.parse_args()
 RAW_WEIGHT = 0.8
 KF_WEIGHT = 1.0 - RAW_WEIGHT
 
@@ -36,8 +40,9 @@ def speed_to_met_compendium(speed_mps):
         right=speed_met_table["MET"].iloc[-1]
     )
 speed_met_table["speed_mps"] = speed_met_table["speed_mph"] * 0.44704
-weight_kg = 70
-height_m = 1.75
+
+weight_kg = args.weight
+height_m = args.height
 
 INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 #INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
@@ -48,7 +53,8 @@ VIDEO_A = f"{INPUT_PATH}/CameraReader_0.mp4"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260530_233444\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260530_233444_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260610_014941\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260610_014941_with_swing.csv"
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712_with_swing.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512_with_swing.csv"
 folder_name = str(Path(csv_path).parent.relative_to(Path(csv_path).parents[1]))
 safe_folder_name = folder_name.replace("\\", "_")
 
@@ -446,6 +452,29 @@ df["ax"] = df["vx"].diff().fillna(0) / dt
 df["ay"] = df["vy"].diff().fillna(0) / dt
 df["az"] = df["vz"].diff().fillna(0) / dt
 
+df["vx_wrist"] = df["right_wrist_vel_x"]/dt
+df["vy_wrist"] = df["right_wrist_vel_y"]/dt
+df["vz_wrist"] = df["right_wrist_vel_z"]/dt
+
+df["vx_wrist_combined"] = KF_WEIGHT * df["vx_wrist"] + RAW_WEIGHT * df["vx_diff"]
+df["vy_wrist_combined"] = KF_WEIGHT * df["vy_wrist"] + RAW_WEIGHT * df["vy_diff"]
+df["vz_wrist_combined"] = KF_WEIGHT * df["vz_wrist"] + RAW_WEIGHT * df["vz_diff"]
+
+df["ax_wrist_combined"] = np.gradient(df["vx_wrist_combined"], dt, edge_order=2)
+df["ay_wrist_combined"] = np.gradient(df["vy_wrist_combined"], dt, edge_order=2)
+df["az_wrist_combined"] = np.gradient(df["vz_wrist_combined"], dt, edge_order=2)
+for c in ["ax_wrist_combined", "ay_wrist_combined", "az_wrist_combined"]:
+    df[c] = savgol_filter(
+        df[c],
+        window_length=21,
+        polyorder=2
+    )
+
+
+df["dax_wrist"] = df["ax_wrist_combined"].diff().fillna(0)
+df["day_wrist"] = df["ay_wrist_combined"].diff().fillna(0)
+df["daz_wrist"] = df["az_wrist_combined"].diff().fillna(0)
+
 # Player Load per frame
 # /10: scale to arbitrary units
 
@@ -453,6 +482,8 @@ df["PL_raw"] = (np.sqrt(
     df["ax_diff"]**2 +df["ay_diff"]**2 + df["az_diff"]**2) / 10000)
 
 df["PL"] = (np.sqrt(df["dax"]**2 + df["day"]**2 + df["daz"]**2) / 100)
+df["PL_wrist"] = (np.sqrt(df["dax_wrist"]**2 + df["day_wrist"]**2 + 
+                          df["daz_wrist"]**2) / 100)
 
 df["PL_raw"] = df["PL_raw"].clip(0, df["PL_raw"].quantile(0.95))
 df["PL"] = df["PL"].clip(
@@ -464,6 +495,17 @@ df["PL"] = savgol_filter(
     window_length=21,
     polyorder=2
 )
+
+df["PL_wrist"] = df["PL_wrist"].clip(
+    lower=0,
+    upper=df["PL_wrist"].quantile(0.95)
+)
+df["PL_wrist"] = savgol_filter(
+    df["PL_wrist"],
+    window_length=21,
+    polyorder=2
+)
+
 df["PL_norm"] = df["PL"] / df["PL"].quantile(0.95)
 
 df["PL_norm"] = df["PL_norm"].clip(0, 1.0)
@@ -524,9 +566,18 @@ pl_per_min_catapult = (
     /
     (df["time_sec"].iloc[-1] / 60)/100
 )
+total_pl_wrist = df["PL_wrist"].sum()
+
+pl_wrist_per_min_catapult = (
+    total_pl_wrist
+    /
+    (df["time_sec"].iloc[-1] / 60)/100
+)
 
 print(f"Total PL: {total_pl:.2f} AU")
 print(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min")
+print(f"Total PL (Wrist): {total_pl_wrist:.2f} AU")
+print(f"PL/min (Wrist, Catapult): {pl_wrist_per_min_catapult:.2f} AU/min")
 
 df["PL_per_min"] = (df["PL"]
     .rolling(
@@ -595,8 +646,32 @@ acc_mag = np.sqrt(
     df["az_combined"]**2
 )
 
+acc_wrist_mag = np.sqrt(
+    df["ax_wrist_combined"]**2 +
+    df["ay_wrist_combined"]**2 +
+    df["az_wrist_combined"]**2
+)
+
 df["MAD"] = (
     acc_mag
+    .rolling(
+        window,
+        center=True,
+        min_periods=1
+    )
+    .apply(
+        lambda x:
+            np.mean(
+                np.abs(
+                    x - np.mean(x)
+                )
+            ),
+        raw=True
+    )
+)
+
+df["MAD_Wrist"] = (
+    acc_wrist_mag
     .rolling(
         window,
         center=True,
@@ -929,6 +1004,23 @@ plt.show()
 plt.figure(figsize=(12,4))
 plt.plot(
     df["time_sec"],
+    df["PL_wrist"],
+    linewidth=1
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("PL_Wrist (AU)")
+plt.title("Instantaneous Player Load from Wrist")
+plt.grid(True)
+plt.savefig(
+    f"{OUTPUT_FOLDER}/playerload_wrist_vs_time.png",
+    dpi=300
+)
+plt.show()
+
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
     df["MAD"],
     linewidth=1,
     color="blue",
@@ -999,6 +1091,30 @@ plt.savefig(
 )
 plt.show()
 
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["PL"],
+    label="Ankle PL"
+)
+plt.plot(
+    df["time_sec"],
+    df["PL_wrist"],
+    label="Wrist PL"
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("PL")
+plt.title("Ankle vs Wrist Player Load")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/pl_ankle_vs_wrist.png",
+    dpi=300
+)
+plt.show()
+
 plt.figure(figsize=(12,4))
 '''plt.plot(
     df["time_sec"],
@@ -1049,6 +1165,49 @@ plt.savefig(
 plt.show()
 
 
+plt.figure(figsize=(12,4))
+
+plt.plot(
+    df["time_sec"],
+    df["MAD_Wrist"],
+    label="Wrist MAD"
+)
+
+plt.xlabel("Time (sec)")
+plt.ylabel("MAD")
+plt.title("Wrist MAD")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/mad_wrist.png",
+    dpi=300
+)
+
+plt.show()
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["MAD"],
+    label="Ankle MAD"
+)
+plt.plot(
+    df["time_sec"],
+    df["MAD_Wrist"],
+    label="Wrist MAD"
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("MAD")
+plt.title("Ankle vs Wrist Mean Absolute Deviation of Acceleration")
+plt.legend()
+plt.grid(True)
+
+plt.savefig(
+    f"{OUTPUT_FOLDER}/mad_ankle_vs_wrist.png",
+    dpi=300
+)
+plt.show()
 
 # =========================
 # Summary Report
@@ -1069,6 +1228,8 @@ with open(summary_txt, "w") as f:
     #f.write(f"Average PL (Catapult): {avg_pl_catapult_per_min:.2f} AU\n")
     f.write(f"Peak PL (Catapult): {peak_pl_catapult_per_min:.2f} AU\n")
     f.write(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min\n")
+    f.write(f"Total PL (Wrist): {total_pl_wrist:.2f} AU\n")
+    f.write(f"PL/min (Wrist, Catapult): {pl_wrist_per_min_catapult:.2f} AU/min\n")
     f.write(f"Jump frames: {df['jump'].sum()}\n")
     f.write(f"Swing frames: {df['is_swing'].sum()}\n")
     f.write(f"Total Distance: {total_distance:.2f} m\n")
