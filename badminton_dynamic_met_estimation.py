@@ -124,6 +124,7 @@ df["vz_calc"] = df["z_smooth"].diff().fillna(0) * fps
 
 z_baseline = df["z_smooth"].rolling(
     int(fps),
+    #center=True,
     center=True,
     min_periods=1
 ).median()
@@ -223,7 +224,9 @@ m_arm = 0.0223 * weight_kg
 # simplified center of mass distance from elbow
 L_forearm = 0.146 * height_m
 L_hand = 0.108 * height_m
-r = 0.43 * L_forearm + L_hand
+
+# Approximate hand COM at 50% of hand length from the wrist
+r = 0.43 * L_forearm + 0.5 *  L_hand # 0.5 *  L_hand
 
 I_elbow = m_arm * r**2
 
@@ -544,6 +547,7 @@ df["PL_per_min"] = (
     .rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     )
     .mean()
@@ -554,6 +558,7 @@ df["PL_catapult_per_min"] = (
     df["PL"].rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     ).sum()
     / window_sec
@@ -583,6 +588,7 @@ df["PL_per_min"] = (df["PL"]
     .rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     )
     .mean()
@@ -657,6 +663,7 @@ df["MAD"] = (
     .rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     )
     .apply(
@@ -675,6 +682,7 @@ df["MAD_Wrist"] = (
     .rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     )
     .apply(
@@ -885,6 +893,7 @@ df["MAD_hip"] = (
     .rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     )
     .apply(
@@ -909,6 +918,7 @@ df["MAD_hip_combined"] = (
     .rolling(
         window,
         center=True,
+        #center=False,
         min_periods=1
     )
     .apply(
@@ -931,7 +941,9 @@ plt.ylabel("Calories (kcal)")
 plt.title("Estimated Calorie Burn")
 plt.grid(True)
 plt.savefig(f"{OUTPUT_FOLDER}/calories_vs_time_{safe_folder_name}_{date}.png", dpi=300)
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 plt.figure(figsize=(12, 4))
 plt.plot(df["time_sec"], df["MET"], linewidth=2, label="Dynamic MET")
@@ -941,7 +953,9 @@ plt.title("Dynamic MET")
 plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/met_vs_time_{safe_folder_name}_{date}.png", dpi=300)
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 plt.figure(figsize=(12, 4))
 plt.plot(df["time_sec"], df["speed_fused_mps"], linewidth=2, label="Fused Speed")
@@ -951,7 +965,9 @@ plt.title("Player Speed")
 plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/fused_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 '''
 plt.figure(figsize=(12, 4))
@@ -972,7 +988,9 @@ plt.title("Swing Rotational MET from Elbow Angular Velocity")
 plt.grid(True)
 plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/swing_rot_met_{safe_folder_name}_{date}.png", dpi=300)
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 '''
 plt.figure(figsize=(12, 4))
 plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_catapult_per_min"], linewidth=2, label="Player Load/min")
@@ -998,7 +1016,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/playerload_vs_time.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 
 plt.figure(figsize=(12,4))
@@ -1015,7 +1035,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/playerload_wrist_vs_time.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 
 plt.figure(figsize=(12,4))
@@ -1042,7 +1064,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/mad_vs_time.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 plt.figure(figsize=(12,4))
 plt.plot(
@@ -1065,7 +1089,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/pl_ankle_vs_hip.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 
 plt.figure(figsize=(12,4))
@@ -1089,7 +1115,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/pl_ankle_vs_hip_combined.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 
 plt.figure(figsize=(12,4))
@@ -1113,7 +1141,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/pl_ankle_vs_wrist.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 plt.figure(figsize=(12,4))
 '''plt.plot(
@@ -1139,8 +1169,9 @@ plt.savefig(
     dpi=300
 )
 
-plt.show()
-
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 
 plt.figure(figsize=(12,4))
@@ -1161,8 +1192,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/mad_hip_combined.png",
     dpi=300
 )
-
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 
 plt.figure(figsize=(12,4))
@@ -1184,7 +1216,9 @@ plt.savefig(
     dpi=300
 )
 
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 plt.figure(figsize=(12,4))
 plt.plot(
@@ -1207,7 +1241,9 @@ plt.savefig(
     f"{OUTPUT_FOLDER}/mad_ankle_vs_wrist.png",
     dpi=300
 )
-plt.show()
+plt.show(block=False)
+plt.pause(2)
+plt.close()
 
 # =========================
 # Summary Report
