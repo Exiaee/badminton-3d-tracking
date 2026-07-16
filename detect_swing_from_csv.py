@@ -77,7 +77,7 @@ def calc_ang_vel_deg(angle_deg, fps, limit=4000):
 
     return angle_smooth, ang_vel
 
-df["right_elbow_ang_vel"] = (
+'''df["right_elbow_ang_vel"] = (
     df["right_elbow_angle (deg)"]
     .diff()
     .abs()
@@ -89,23 +89,28 @@ df["left_elbow_ang_vel"] = (
     .diff()
     .abs()
     * fps
-)
+)'''
+
 df["right_elbow_angle_smooth"], df["right_elbow_ang_vel"] = calc_ang_vel_deg(
     df["right_elbow_angle (deg)"],
+    #df["right_elbow_angle_smooth"],
     fps,
     limit=ANG_VEL_LIMIT
 )
 
 df["left_elbow_angle_smooth"], df["left_elbow_ang_vel"] = calc_ang_vel_deg(
     df["left_elbow_angle (deg)"],
+    #df["left_elbow_angle_smooth"],
     fps,
     limit=ANG_VEL_LIMIT
 )
 
 df["active_angle"] = np.where(
-    df["right_elbow_ang_vel"] > df["left_elbow_ang_vel"],
-    df["right_elbow_angle (deg)"],
-    df["left_elbow_angle (deg)"]
+    df["right_elbow_ang_vel"] >= df["left_elbow_ang_vel"],
+    #df["right_elbow_angle (deg)"],
+    #df["left_elbow_angle (deg)"]
+    df["right_elbow_angle_smooth"],
+    df["left_elbow_angle_smooth"]
 )
 
 df["active_ang_vel"] = np.maximum(
@@ -113,11 +118,18 @@ df["active_ang_vel"] = np.maximum(
     df["left_elbow_ang_vel"]
 )
 
+# Frame-level swing detection
 df["is_swing"] = (
     (df["active_angle"] < 140)
     &
     (df["active_ang_vel"] > 80)
 )
+
+# Detect the start of each swing event
+df["swing_start"] = df["is_swing"] & ~df["is_swing"].shift(fill_value=False)
+
+swing_count = df["swing_start"].sum()
+
 
 out_path = Path(csv_path).with_name(
     Path(csv_path).stem + "_with_swing.csv"
@@ -126,4 +138,5 @@ out_path = Path(csv_path).with_name(
 df.to_csv(out_path, index=False)
 
 print(f"Detected swing frames: {df['is_swing'].sum()}")
+print(f"Swing Count: {swing_count}")
 print(f"Saved: {out_path}")
