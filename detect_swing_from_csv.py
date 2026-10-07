@@ -12,8 +12,8 @@ from pathlib import Path
 # 4 cameras in 4 corners, id: 0, 1, 2, 3
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 
 folder_name = Path(INPUT_PATH).name
 CAM_PAIRS = [(0, 2)]
@@ -35,9 +35,11 @@ fps_a = capA.get(cv2.CAP_PROP_FPS)
 
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260530_233444\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260530_233444.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754.csv"
-#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260610_014941\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260610_014941.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260720_030005\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260720_030005.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260913_202856\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260913_202856.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260918_030220\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260918_030220.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712.csv"
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512.csv"
 fps = fps_a 
 
 df = pd.read_csv(csv_path)

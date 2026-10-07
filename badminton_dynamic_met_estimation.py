@@ -15,12 +15,15 @@ RAW_WEIGHT = 0.8
 KF_WEIGHT = 1.0 - RAW_WEIGHT
 
 date = datetime.now().strftime("%Y%m%d_%H%M%S")
-OUTPUT_FOLDER = f"output_dynamic_MET_{RAW_WEIGHT}_{date}"
-Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
+#OUTPUT_FOLDER = f"output_dynamic_MET_{RAW_WEIGHT}_{dataset_name}_{date}"
+#Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
 JUMP_ROPE_SLOW_MET = 8.3
 JUMP_ROPE_MOD_MET = 11.8
 JUMP_ROPE_FAST_MET = 12.3
+
+# Jump-state reference intensity
+JUMP_REFERENCE_MET = 8.9
 
 
 
@@ -44,17 +47,24 @@ speed_met_table["speed_mps"] = speed_met_table["speed_mph"] * 0.44704
 weight_kg = args.weight
 height_m = args.height
 
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
 
+dataset_name = Path(INPUT_PATH).name
 VIDEO_A = f"{INPUT_PATH}/CameraReader_0.mp4"
+
+OUTPUT_FOLDER = f"output_dynamic_MET_{RAW_WEIGHT}_{dataset_name}_{date}"
+Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
 
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260530_233444\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260530_233444_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260610_014941\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260610_014941_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712_with_swing.csv"
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512_with_swing.csv"
+#csv_path =  r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260720_030005\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260720_030005_with_swing.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260918_030220\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260918_030220_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260913_202856\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260913_202856_with_swing.csv"
 folder_name = str(Path(csv_path).parent.relative_to(Path(csv_path).parents[1]))
 safe_folder_name = folder_name.replace("\\", "_")
 
@@ -88,6 +98,8 @@ df["dist_m"] = savgol_filter(
     polyorder=2
 )
 
+df["dist_m"] = np.clip(df["dist_m"], 0, None)
+
 df["speed_mps"] = df["dist_m"] / dt
 
 df["speed_mps"] = savgol_filter(
@@ -104,6 +116,8 @@ df["speed_fused_mps"] = savgol_filter(
     window_length=21,
     polyorder=2
 )
+
+df["speed_fused_mps"] = np.clip(df["speed_fused_mps"], 0, None)
 
 df["speed_kmh"] = df["speed_fused_mps"] * 3.6
 
@@ -186,19 +200,31 @@ if "active_ang_vel" not in df.columns:
             * fps
         )
 
-        df["right_elbow_ang_vel"] = df["right_elbow_ang_vel"].clip(0, 4000)
-        df["left_elbow_ang_vel"] = df["left_elbow_ang_vel"].clip(0, 4000)
+       # df["right_elbow_ang_vel"] = df["right_elbow_ang_vel"].clip(0, 4000)
+        #df["left_elbow_ang_vel"] = df["left_elbow_ang_vel"].clip(0, 4000)
 
-        df["active_ang_vel"] = np.maximum(
+        df["active_ang_vel_raw"] = df["right_elbow_ang_vel"].copy()
+        df["active_angle"] = df["right_elbow_angle_smooth"].copy()
+
+        # Suppress short derivative spikes
+        df["active_ang_vel"] = (
+            df["active_ang_vel_raw"]
+            .rolling(
+                window=5,
+                center=True,
+                min_periods=1
+            )
+            .median()
+        )
+        '''df["active_ang_vel"] = np.maximum(
             df["right_elbow_ang_vel"],
             df["left_elbow_ang_vel"]
         )
-
         df["active_angle"] = np.where(
             df["right_elbow_ang_vel"] >= df["left_elbow_ang_vel"],
             df["right_elbow_angle_smooth"],
             df["left_elbow_angle_smooth"]
-        )
+        )'''
 
         df["is_swing"] = (
             (df["active_angle"] < 140)
@@ -215,6 +241,8 @@ else:
     if "is_swing" not in df.columns:
         df["is_swing"] = df["active_ang_vel"] > 80
 
+
+'''
 # =========================
 # Rotational energy from active_ang_vel
 # =========================
@@ -256,9 +284,173 @@ df["MET_swing_rot"] = (
     df["rot_power_W"]
     /
     (1.225 * weight_kg)
+)'''
+
+#df["MET_swing_rot"] = df["MET_swing_rot"].clip(0, 4.0)
+
+# =========================
+# Swing MET - Event-based
+# =========================
+
+# Forearm + hand mass
+m_arm = 0.0223 * weight_kg
+
+# Segment length
+L_forearm = 0.146 * height_m
+L_hand = 0.108 * height_m
+
+# Approximate COM distance from elbow
+r = 0.43 * L_forearm + 0.5 * L_hand
+
+# Moment of inertia
+I_elbow = m_arm * r**2
+
+# Mechanical → metabolic efficiency
+ETA = 0.15
+
+# Initialize Swing MET
+df["MET_swing_rot"] = 0.0
+
+
+# -------------------------
+# Identify continuous Swing Events
+# -------------------------
+'''swing_start = (
+    df["is_swing"]
+    & ~df["is_swing"].shift(1, fill_value=False)
 )
 
-df["MET_swing_rot"] = df["MET_swing_rot"].clip(0, 4.0)
+df["swing_event_id"] = swing_start.cumsum()'''
+
+# =========================
+# Merge short gaps between Swing frames
+# =========================
+
+MAX_GAP_SEC = 0.10
+#MAX_GAP_FRAMES = int(MAX_GAP_SEC * fps)
+MAX_GAP_FRAMES = int(np.ceil(MAX_GAP_SEC * fps))
+
+swing = df["is_swing"].to_numpy().copy()
+
+true_idx = np.where(swing)[0]
+
+for i in range(len(true_idx) - 1):
+
+    current_idx = true_idx[i]
+    next_idx = true_idx[i + 1]
+
+    gap = next_idx - current_idx - 1
+
+    # Merge short gaps
+    if 0 < gap <= MAX_GAP_FRAMES:
+        swing[current_idx + 1:next_idx] = True
+
+df["is_swing"] = swing
+
+# =========================
+# Remove very short Swing Events
+# =========================
+
+MIN_SWING_SEC = 0.10
+#MIN_SWING_FRAMES = int(MIN_SWING_SEC * fps)
+MIN_SWING_FRAMES = int(np.ceil(MIN_SWING_SEC * fps))
+
+swing_start = (
+    df["is_swing"]
+    & ~df["is_swing"].shift(1, fill_value=False)
+)
+
+swing_event_id = swing_start.cumsum()
+
+for event_id in swing_event_id[df["is_swing"]].unique():
+
+    mask = (
+        (swing_event_id == event_id)
+        & df["is_swing"]
+    )
+
+    if mask.sum() < MIN_SWING_FRAMES:
+        df.loc[mask, "is_swing"] = False
+    # =========================
+    # Rebuild Swing Event IDs
+    # after merge / filtering
+    # =========================
+
+    swing_start = (
+        df["is_swing"]
+        & ~df["is_swing"].shift(1, fill_value=False)
+    )
+
+    df["swing_event_id"] = swing_start.cumsum()
+# -------------------------
+# Calculate Swing MET
+# event by event
+# -------------------------
+for event_id in df.loc[df["is_swing"], "swing_event_id"].unique():
+
+    mask = (
+        (df["swing_event_id"] == event_id)
+        & df["is_swing"]
+    )
+
+    n_frames = mask.sum()
+
+    if n_frames == 0:
+        continue
+
+    # Swing duration
+    duration_s = n_frames / fps
+    ang_vel = df.loc[mask, "active_ang_vel"]
+    # Peak angular velocity of this Swing Event
+    '''peak_ang_vel = df.loc[
+        mask,
+        "active_ang_vel"
+    ].max()'''
+    peak_ang_vel = np.percentile(
+        df.loc[mask, "active_ang_vel"],
+        95
+    )
+    # deg/s → rad/s
+    omega_peak = np.deg2rad(peak_ang_vel)
+
+    # Rotational mechanical energy
+    rot_energy_J = (
+        0.5
+        * I_elbow
+        * omega_peak**2
+    )
+
+    # Mechanical energy → metabolic energy
+    metabolic_energy_J = (
+        rot_energy_J / ETA
+    )
+
+    # Average metabolic power during this Swing Event
+    swing_power_W = (
+        metabolic_energy_J / duration_s
+    )
+
+    # Power → MET
+    swing_met = (
+        swing_power_W
+        /
+        (1.225 * weight_kg)
+    )
+
+    # Assign same event-level MET
+    # to frames belonging to this Swing Event
+    df.loc[
+        mask,
+        "MET_swing_rot"
+    ] = swing_met
+    print(
+        f"Event {event_id:3d}: "
+        f"frames={n_frames:3d}, "
+        f"duration={duration_s:.3f}s, "
+        f"max={ang_vel.max():.1f}, "
+        f"P95={np.percentile(ang_vel,95):.1f}, "
+        f"mean={ang_vel.mean():.1f}"
+    )
 
 # =========================
 # Badminton MET model
@@ -275,8 +467,13 @@ df["MET_movement"] = (
     speed_norm * (BADMINTON_MATCH_MET - BADMINTON_BASE_MET)
 )
 print(df["jump"].value_counts())
-df["MET"] = np.where(df["jump"],JUMP_ROPE_MOD_MET, df["speed_fused_mps"].apply(speed_to_met_compendium))
+#df["MET"] = np.where(df["jump"],JUMP_ROPE_MOD_MET, df["speed_fused_mps"].apply(speed_to_met_compendium))
+df["MET"] = np.where(df["jump"],JUMP_REFERENCE_MET, df["speed_fused_mps"].apply(speed_to_met_compendium))
 df["MET"] = df["MET"] + df["MET_swing_rot"]
+
+
+# Jump 時 Running MET 不適用，只供繪圖使用
+df["RUN_MET"] = np.where(df["jump"], np.nan, df["speed_fused_mps"].apply(speed_to_met_compendium))
 '''df["MET"] = (
     df["MET_movement"]
     +
@@ -498,6 +695,7 @@ df["PL"] = savgol_filter(
     window_length=21,
     polyorder=2
 )
+df["PL"] = np.clip(df["PL"], 0, None)
 
 df["PL_wrist"] = df["PL_wrist"].clip(
     lower=0,
@@ -553,6 +751,17 @@ df["PL_per_min"] = (
     .mean()
     * 60
 )
+df["PL_per_min_sum"] = (
+    df["PL"]
+    .rolling(
+        window,
+        center=True,
+        #center=False,
+        min_periods=1
+    )
+    .sum()
+    / window_sec * 60
+)
 
 df["PL_catapult_per_min"] = (
     df["PL"].rolling(
@@ -566,10 +775,11 @@ df["PL_catapult_per_min"] = (
 )
 total_pl = df["PL"].sum()
 
-pl_per_min_catapult = (
+pl_per_min = (
     total_pl
     /
-    (df["time_sec"].iloc[-1] / 60)/100
+    (df["time_sec"].iloc[-1] / 60)
+    #(df["time_sec"].iloc[-1] / 60)/100
 )
 total_pl_wrist = df["PL_wrist"].sum()
 
@@ -580,7 +790,7 @@ pl_wrist_per_min_catapult = (
 )
 
 print(f"Total PL: {total_pl:.2f} AU")
-print(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min")
+print(f"PL/min : {pl_per_min:.2f} AU/min")
 print(f"Total PL (Wrist): {total_pl_wrist:.2f} AU")
 print(f"PL/min (Wrist, Catapult): {pl_wrist_per_min_catapult:.2f} AU/min")
 
@@ -958,12 +1168,12 @@ plt.pause(2)
 plt.close()
 
 plt.figure(figsize=(12, 4))
-plt.plot(df["time_sec"], df["speed_fused_mps"], linewidth=2, label="Fused Speed")
+plt.plot(df["time_sec"], df["speed_fused_mps"], linewidth=2,) #label="Fused Speed")
 plt.xlabel("Time (sec)")
 plt.ylabel("Speed (m/s)")
-plt.title("Player Speed")
+plt.title("Player Movement Speed")
 plt.grid(True)
-plt.legend()
+#plt.legend()
 plt.savefig(f"{OUTPUT_FOLDER}/fused_speed_vs_time_{safe_folder_name}_{date}.png", dpi=300)
 plt.show(block=False)
 plt.pause(2)
@@ -991,6 +1201,20 @@ plt.savefig(f"{OUTPUT_FOLDER}/swing_rot_met_{safe_folder_name}_{date}.png", dpi=
 plt.show(block=False)
 plt.pause(2)
 plt.close()
+
+plt.figure(figsize=(12, 4))
+plt.plot(df["time_sec"], df["RUN_MET"], linewidth=2, label="Running MET")
+plt.xlabel("Time (sec)")
+plt.ylabel("Running MET")
+plt.title("Running MET over Time")
+plt.grid(True)
+plt.legend()
+plt.savefig(f"{OUTPUT_FOLDER}/run_met_{safe_folder_name}_{date}.png", dpi=300)
+plt.show(block=False)
+plt.pause(2)
+plt.close()
+
+
 '''
 plt.figure(figsize=(12, 4))
 plt.plot(df.loc[valid_time_mask, "time_sec"], df.loc[valid_time_mask, "PL_catapult_per_min"], linewidth=2, label="Player Load/min")
@@ -1009,8 +1233,9 @@ plt.plot(
     linewidth=1
 )
 plt.xlabel("Time (sec)")
-plt.ylabel("PL (AU)")
+plt.ylabel("Player Load (AU)")
 plt.title("Instantaneous Player Load")
+plt.ylim(bottom=0)
 plt.grid(True)
 plt.savefig(
     f"{OUTPUT_FOLDER}/playerload_vs_time.png",
@@ -1056,7 +1281,30 @@ plt.plot(
     label="MAD Center False"
 )
 plt.xlabel("Time (sec)")
-plt.ylabel("MAD (AU)")
+plt.ylabel("MAD (m/s²)")
+plt.title(" Mean Absolute Deviation of Acceleration")
+plt.legend()
+plt.grid(True)
+plt.savefig(
+    f"{OUTPUT_FOLDER}/mad_true_false_vs_time.png",
+    dpi=300
+)
+plt.show(block=False)
+plt.pause(2)
+plt.close()
+
+
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["MAD"],
+    linewidth=1,
+    color="blue",
+    label="MAD",
+)
+plt.xlabel("Time (sec)")
+plt.ylabel("MAD (m/s²)")
 plt.title(" Mean Absolute Deviation of Acceleration")
 plt.legend()
 plt.grid(True)
@@ -1067,6 +1315,7 @@ plt.savefig(
 plt.show(block=False)
 plt.pause(2)
 plt.close()
+
 
 plt.figure(figsize=(12,4))
 plt.plot(
@@ -1245,6 +1494,78 @@ plt.show(block=False)
 plt.pause(2)
 plt.close()
 
+
+swing_raw_start = (
+    df["is_swing"].astype(bool) &
+    ~df["is_swing"].astype(bool).shift(1, fill_value=False)
+)
+
+min_swing_interval_sec = 0.3
+min_swing_interval_frames = int(min_swing_interval_sec * fps)
+
+start_indices = np.where(swing_raw_start)[0]
+filtered_swing_indices = []
+last_index = -min_swing_interval_frames
+
+for idx in start_indices:
+    if idx - last_index >= min_swing_interval_frames:
+        filtered_swing_indices.append(idx)
+        last_index = idx
+
+
+
+swing_start = (
+    df["is_swing"].astype(bool)
+    & ~df["is_swing"].astype(bool).shift(1, fill_value=False)
+)
+swing_start = pd.Series(False, index=df.index)
+swing_start.iloc[filtered_swing_indices] = True
+
+plt.figure(figsize=(12,4))
+plt.plot(
+    df["time_sec"],
+    df["active_ang_vel"],
+    linewidth=1.2,
+    color="tab:blue",
+    label="Active Angular Velocity"
+)
+
+plt.axhline(
+    y = 80,
+    linestyle="--",
+    linewidth=1.5,
+    color="tab:orange",
+    label="Angular Velocity Threshold (80 deg/s)",
+)
+
+swing_mask = df["is_swing"].astype(bool)
+
+plt.scatter(
+    #df.loc[swing_mask, "time_sec"],
+    #df.loc[swing_mask, "active_ang_vel"],
+    df.loc[swing_start, "time_sec"],
+    df.loc[swing_start, "active_ang_vel"],
+    s=40,
+    color="tab:red",
+    label="Swing Start",
+    zorder=3
+    #label="Swing Frame"
+)
+
+plt.xlabel("Time (sec)")
+plt.ylabel("Active Angular Velocity (deg/s)")
+plt.title("Active Angular Velocity and Swing Detection")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.savefig(
+    f"{OUTPUT_FOLDER}/active_ang_vel_swing_detection_{safe_folder_name}_{date}.png",
+    dpi=300
+)
+plt.show(block=False)
+plt.pause(2)
+plt.close()
+
 # =========================
 # Summary Report
 # =========================
@@ -1263,7 +1584,7 @@ with open(summary_txt, "w") as f:
     f.write(f"Total PL: {total_pl:.2f} AU\n")
     #f.write(f"Average PL (Catapult): {avg_pl_catapult_per_min:.2f} AU\n")
     f.write(f"Peak PL (Catapult): {peak_pl_catapult_per_min:.2f} AU\n")
-    f.write(f"PL/min (Catapult): {pl_per_min_catapult:.2f} AU/min\n")
+    f.write(f"PL/min : {pl_per_min:.2f} AU/min\n")
     f.write(f"Total PL (Wrist): {total_pl_wrist:.2f} AU\n")
     f.write(f"PL/min (Wrist, Catapult): {pl_wrist_per_min_catapult:.2f} AU/min\n")
     f.write(f"Jump frames: {df['jump'].sum()}\n")

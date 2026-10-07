@@ -14,8 +14,8 @@ date = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_FOLDER = f"badminton_motion_analysis_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 input_name = Path(INPUT_PATH).name
 OUTPUT_FOLDER = f"badminton_motion_analysis_{input_name}_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -460,6 +460,155 @@ def draw_top_trajectory(canvas, trajectory, color=(255, 255, 0)):
                 (0,0,255),
                 2
             )'''
+
+    return canvas
+
+def draw_top_trajectory_start_end(canvas, trajectory, color=(255, 255, 0)): 
+    # Green: (0, 255, 0), Green: (255,255,0)
+    scale_vis = 40
+    bg_h, bg_w = canvas.shape[:2]
+    sx, sy = 400, 800
+    offset_x = (bg_w - sx) //2
+    offset_y = (bg_h - sy) //2
+    #cx, cy = sx//2, sy//2
+    cx = offset_x + sx//2
+    cy = offset_y + sy//2
+    if len(trajectory) < 2:
+        return canvas
+    
+    pts = []
+    #for x, y in trajectory:
+    for item in trajectory:
+        x , y = item["pos"]
+        is_jump = item["jump"]
+        if np.isnan(x) or np.isnan(y):
+            continue
+
+        px = int(cx - x * scale_vis)
+        py = int(cy + y * scale_vis)
+        pts.append((px, py, is_jump))
+    
+    for i in range(1, len(pts)):
+        p1 = pts[i-1][:2]
+        p2 = pts[i][:2]
+        cv2.line(canvas,p1, p2, color, 2)
+        curr_jump = pts[i][2]
+        prev_jump = pts[i-1][2]
+        if curr_jump and not prev_jump:
+            px, py = p2
+    # pulse animation
+            pulse = int(
+                10
+                + 8 * abs(np.sin(i * 0.5))
+            )
+
+            '''cv2.circle(
+                canvas,
+                p2,
+                #pulse,
+                6,
+                (0,0,255),
+                -1
+            )'''
+
+            '''cv2.putText(
+                canvas,
+                "J",
+                (px + 10, py - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.2,
+                (0,0,255),
+                2
+            )'''
+
+        # ==============================
+    # Draw Start / End
+    # ==============================
+    if len(pts) > 0:
+
+        # Start point
+        start_pt = pts[0][:2]
+        cv2.circle(
+            canvas,
+            start_pt,
+            7,
+            (0, 255, 0),   # Green
+            -1
+        )
+
+        '''cv2.putText(
+            canvas,
+            "Start",
+            (start_pt[0] + 10, start_pt[1] - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1
+        )'''
+
+        # End point
+        end_pt = pts[-1][:2]
+        cv2.circle(
+            canvas,
+            end_pt,
+            7,
+            (0, 0, 255),   # Red
+            -1
+        )
+
+        '''cv2.putText(
+            canvas,
+            "End",
+            (end_pt[0] + 10, end_pt[1] - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1
+        )'''
+        # ==============================
+        # Legend in bottom black area
+        # ==============================
+        h, w = canvas.shape[:2]
+
+        legend_y = h - 35
+
+        # Start
+        cv2.circle(
+            canvas,
+            (w // 2 - 80, legend_y),
+            7,
+            (0, 255, 0),
+            -1
+        )
+
+        cv2.putText(
+            canvas,
+            "Start",
+            (w // 2 - 65, legend_y + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1
+        )
+
+        # End
+        cv2.circle(
+            canvas,
+            (w // 2 + 35, legend_y),
+            7,
+            (0, 0, 255),
+            -1
+        )
+
+        cv2.putText(
+            canvas,
+            "End",
+            (w // 2 + 50, legend_y + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1
+        )
 
     return canvas
 # ===== Helper: draw top view =====
@@ -1107,6 +1256,177 @@ def draw_3d_side_view(points3dP1, frame_id=None):
 
     return canvas
 # Function to draw the virtual badminton court
+def draw_full_3d_skeleton(points3dP1, frame_id=None):
+
+    w, h = 700, 700
+
+    # white background
+    canvas = np.full(
+        (h, w, 3),
+        255,
+        dtype=np.uint8
+    )
+
+    scale = 150
+    origin = np.array([350, 540])
+
+    # simple 3D projection
+    def project(p):
+
+        x, y, z = p
+
+        px = origin[0] + (x - y * 0.45) * scale
+        py = origin[1] - z * scale + y * 0.25 * scale
+
+        return int(px), int(py)
+
+    # ==================================
+    # Center skeleton
+    # ==================================
+
+    center = np.nanmean(
+        points3dP1[:num_keypoints],
+        axis=0
+    )
+
+    pts = points3dP1.copy()
+
+    pts[:num_keypoints] -= center
+
+    # keep feet around z = 0
+    min_z = np.nanmin(pts[:num_keypoints, 2])
+
+    pts[:num_keypoints, 2] -= min_z
+
+
+    # ==================================
+    # Draw floor grid
+    # ==================================
+
+    grid_color = (220, 220, 220)
+
+    for x in np.linspace(-1.5, 1.5, 9):
+
+        cv2.line(
+            canvas,
+            project([x, -1.5, 0]),
+            project([x,  1.5, 0]),
+            grid_color,
+            1
+        )
+
+    for y in np.linspace(-1.5, 1.5, 9):
+
+        cv2.line(
+            canvas,
+            project([-1.5, y, 0]),
+            project([ 1.5, y, 0]),
+            grid_color,
+            1
+        )
+
+
+    # ==================================
+    # Draw full skeleton
+    # ==================================
+
+    for b1, b2 in SKELETON_CONNECTIONS:
+
+        if b1 >= num_keypoints or b2 >= num_keypoints:
+            continue
+
+        p1 = pts[b1]
+        p2 = pts[b2]
+
+        if np.isnan(p1).any() or np.isnan(p2).any():
+            continue
+
+        cv2.line(
+            canvas,
+            project(p1),
+            project(p2),
+            (60, 60, 60),
+            4
+        )
+
+
+    # ==================================
+    # Draw 17 joints
+    # ==================================
+
+    for p in range(num_keypoints):
+
+        pt = pts[p]
+
+        if np.isnan(pt).any():
+            continue
+
+        cv2.circle(
+            canvas,
+            project(pt),
+            7,
+            (0, 100, 220),
+            -1
+        )
+
+
+    # ==================================
+    # XYZ coordinate axes
+    # ==================================
+
+    axis_origin = np.array([-1.2, -1.1, 0])
+
+    O = project(axis_origin)
+
+    X = project(axis_origin + np.array([0.6, 0, 0]))
+    Y = project(axis_origin + np.array([0, 0.6, 0]))
+    Z = project(axis_origin + np.array([0, 0, 0.6]))
+
+    cv2.arrowedLine(canvas, O, X, (0, 0, 255), 2)
+    cv2.arrowedLine(canvas, O, Y, (0, 150, 0), 2)
+    cv2.arrowedLine(canvas, O, Z, (255, 0, 0), 2)
+
+    cv2.putText(
+        canvas, "X",
+        X,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 0, 255),
+        2
+    )
+
+    cv2.putText(
+        canvas, "Y",
+        Y,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 150, 0),
+        2
+    )
+
+    cv2.putText(
+        canvas, "Z",
+        Z,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 0, 0),
+        2
+    )
+
+
+    if frame_id is not None:
+
+        cv2.putText(
+            canvas,
+            f"Frame {frame_id}",
+            (20, 35),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (40, 40, 40),
+            2
+        )
+    return canvas
+
 def draw_virtual_court(frame, projMtx):
     for i in range(0, len(court_3d), 2):
         # Project the 3D points to 2D
@@ -1379,6 +1699,14 @@ def main():
         (500, 500)
     )
 
+    writer_full = cv2.VideoWriter(
+            f"{OUTPUT_FOLDER}/Full_View_{player_anchor}_{folder_name}_{date}.mp4",
+            fourcc,
+            fps_out,
+            (700, 700)
+    )
+    
+
     while True:
     
 
@@ -1551,10 +1879,15 @@ def main():
             right_ankle = filtered_points[BodyKpt.Right_Ankle]
             #left_ankle = smoothed_points[BodyKpt.Left_Ankle]
             #right_ankle = smoothed_points[BodyKpt.Right_Ankle]
+            '''
             player_pos = np.nanmean(
                 np.vstack([left_ankle, right_ankle]),
                 axis=0
-            )
+            )'''
+            player_pos = np.nanmean(
+                np.vstack([right_ankle, right_ankle]),
+                axis=0
+             )
             player_pos_right_ankle = np.nanmean(
                 np.vstack([right_ankle, right_ankle]),
                 axis=0
@@ -1615,7 +1948,13 @@ def main():
                 "z_hip": player_pos_hip[2],
                 "vx_hip": player_v_hip[0],
                 "vy_hip": player_v_hip[1],
-                "vz_hip": player_v_hip[2]
+                "vz_hip": player_v_hip[2],
+                "x_right_ankle": right_ankle[0],
+                "y_right_ankle": right_ankle[1],
+                "z_right_ankle": right_ankle[2],
+                "vx_right_ankle": right_v[0],
+                "vy_right_ankle": right_v[1],
+                "vz_right_ankle": right_v[2],
             }
 
             if i == 0:
@@ -1649,17 +1988,19 @@ def main():
         front_back_view = draw_front_back_view(points_3d_P1[0])
         #side_view = draw_side_view(points_3d_P1[0])
         side_view = draw_3d_side_view(points_3d_P1[0], frame_id)
+        skeleton_3d_view = draw_full_3d_skeleton(points_3d_P1[0],frame_id)
         writer_camA.write(frameA)
         writer_camB.write(frameB)
         writer_top.write(top_view)
         writer_front.write(front_back_view)
         writer_side.write(side_view)
+        writer_full.write(skeleton_3d_view)
 
         cv2.imshow("Camera A", frameA)
         cv2.imshow("Camera B", frameB)
         cv2.imshow("Top View", top_view)
         cv2.imshow("Side View", side_view)
-
+        cv2.imshow("3D Skeleton View", skeleton_3d_view)    
         # Show images
         cv2.imshow("Front/Back View", front_back_view)
 
@@ -1672,6 +2013,8 @@ def main():
     writer_camB.release()
     writer_top.release()
     writer_front.release()
+    writer_side.release ()
+    writer_full.release()
     df_P1 = pd.DataFrame(trajectory_P1)
     df_P2 = pd.DataFrame(trajectory_P2)
 
@@ -1684,6 +2027,36 @@ def main():
     capB.release()
     # capB.release()
     cv2.destroyAllWindows()
+    # ============================================================
+# Save final XY trajectory figure
+# ============================================================
+
+    if len(top_traj_P1) > 1:
+
+        # 建立乾淨羽球場
+        trajectory_canvas = draw_top_view(
+            points3dP1=None,
+            points3dP2=None
+        )
+
+        # 畫完整 Right Ankle trajectory
+        trajectory_canvas = draw_top_trajectory_start_end(
+            trajectory_canvas,
+            top_traj_P1,
+            color=COLOR_TRAJ
+        )
+
+        # 輸出檔名
+        trajectory_path = Path(OUTPUT_FOLDER) / (
+            f"trajectory_{input_name}.png"
+        )
+
+        cv2.imwrite(
+            str(trajectory_path),
+            trajectory_canvas
+        )
+
+        print(f"[SAVE] {trajectory_path}")
 
 if __name__ == "__main__":
     main()
