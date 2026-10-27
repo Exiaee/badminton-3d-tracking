@@ -33,13 +33,45 @@ VIDEO_A = f"{INPUT_PATH}/CameraReader_{CAM_PAIRS[SELECTED_PAIR][0]}.mp4"
 capA = cv2.VideoCapture(VIDEO_A)
 fps_a = capA.get(cv2.CAP_PROP_FPS)
 
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260913_202856\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260913_202856.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20261012_231118\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20261012_231118.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20261013_234536\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20261013_234536.csv"
+#sv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260918_030220\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260918_030220.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260530_233444\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260530_233444.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260530_232754\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260530_232754.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260720_030005\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260720_030005.csv"
-#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260913_202856\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260913_202856.csv"
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260918_030220\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260918_030220.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512.csv"
+
+dataset_name = Path(INPUT_PATH).name
+
+suppoeted_dataset = {
+    "2026-04-09_19-12-21",
+    "2026-04-09_19-13-28"
+}
+
+if dataset_name not in suppoeted_dataset:
+    raise ValueError(f"Unsupported dataset: {dataset_name}. Supported datasets: {suppoeted_dataset}")
+
+base_dir = Path(
+    r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking"
+)
+
+csv_files =  list(base_dir.glob(
+    f"badminton_motion_analysis_{dataset_name}_*"
+    f"/Player1_trajectory_right_ankel_{dataset_name}"
+    f"_right_ankel_akima_*.csv"
+))
+
+if not csv_files:
+    raise FileNotFoundError(
+        f"Cannot find trajectory CSV for {dataset_name}"
+    )
+
+csv_path = str(max(csv_files, key=lambda f: f.stat().st_mtime))
+
+print(f"Using CSV: {csv_path}")
+
 fps = fps_a 
 
 df = pd.read_csv(csv_path)
@@ -106,7 +138,7 @@ df["left_elbow_angle_smooth"], df["left_elbow_ang_vel"] = calc_ang_vel_deg(
     fps,
     limit=ANG_VEL_LIMIT
 )
-
+'''
 df["active_angle"] = np.where(
     df["right_elbow_ang_vel"] >= df["left_elbow_ang_vel"],
     #df["right_elbow_angle (deg)"],
@@ -118,13 +150,20 @@ df["active_angle"] = np.where(
 df["active_ang_vel"] = np.maximum(
     df["right_elbow_ang_vel"],
     df["left_elbow_ang_vel"]
-)
+)'''
+
+df["active_angle"] = df["right_elbow_angle_smooth"].copy()
+df["active_ang_vel"] = df["right_elbow_ang_vel"].copy()
+
 
 # Frame-level swing detection
+active_angle_threshold = 150  # degrees
+active_ang_vel_threshold = 120  # deg/s
 df["is_swing"] = (
-    (df["active_angle"] < 140)
+    (df["active_angle"] < active_angle_threshold)
+    #&
     &
-    (df["active_ang_vel"] > 80)
+    (df["active_ang_vel"] > active_ang_vel_threshold)
 )
 
 # Detect the start of each swing event

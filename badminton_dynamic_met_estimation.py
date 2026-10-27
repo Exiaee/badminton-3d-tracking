@@ -47,8 +47,8 @@ speed_met_table["speed_mps"] = speed_met_table["speed_mph"] * 0.44704
 weight_kg = args.weight
 height_m = args.height
 
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
 
 dataset_name = Path(INPUT_PATH).name
 VIDEO_A = f"{INPUT_PATH}/CameraReader_0.mp4"
@@ -63,8 +63,8 @@ Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260611_031712\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260611_031712_with_swing.csv"
 #csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260616_005512\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260616_005512_with_swing.csv"
 #csv_path =  r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260720_030005\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260720_030005_with_swing.csv"
-csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260918_030220\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260918_030220_with_swing.csv"
-#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260913_202856\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260913_202856_with_swing.csv"
+#csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-12-21_20260918_030220\Player1_trajectory_right_ankel_2026-04-09_19-12-21_right_ankel_akima_20260918_030220_with_swing.csv"
+csv_path = r"C:\D\NCTU_CS\Thesis\Lab_Data\Multiview_3d_Tracking\badminton_motion_analysis_2026-04-09_19-13-28_20260913_202856\Player1_trajectory_right_ankel_2026-04-09_19-13-28_right_ankel_akima_20260913_202856_with_swing.csv"
 folder_name = str(Path(csv_path).parent.relative_to(Path(csv_path).parents[1]))
 safe_folder_name = folder_name.replace("\\", "_")
 
@@ -350,7 +350,7 @@ df["is_swing"] = swing
 # =========================
 # Remove very short Swing Events
 # =========================
-
+'''
 MIN_SWING_SEC = 0.10
 #MIN_SWING_FRAMES = int(MIN_SWING_SEC * fps)
 MIN_SWING_FRAMES = int(np.ceil(MIN_SWING_SEC * fps))
@@ -381,16 +381,45 @@ for event_id in swing_event_id[df["is_swing"]].unique():
         & ~df["is_swing"].shift(1, fill_value=False)
     )
 
-    df["swing_event_id"] = swing_start.cumsum()
+    df["swing_event_id"] = swing_start.cumsum()'''
+
+# Preserve original Swing detection
+df["is_swing_raw"] = df["is_swing"].fillna(False).astype(bool)
+
+# Merge gaps of up to 2 frames
+MAX_GAP_FRAMES = 2
+
+swing = df["is_swing_raw"].to_numpy().copy()
+true_idx = np.flatnonzero(swing)
+
+for i in range(len(true_idx) - 1):
+    current_idx = true_idx[i]
+    next_idx = true_idx[i + 1]
+
+    gap = next_idx - current_idx - 1
+
+    if 0 < gap <= MAX_GAP_FRAMES:
+        swing[current_idx + 1:next_idx] = True
+
+df["is_swing_event"] = swing
+
+# Rebuild Swing Event ID
+df["swing_start_event"] = (
+    df["is_swing_event"]
+    & ~df["is_swing_event"].shift(1, fill_value=False)
+)
+
+df["swing_event_id"] = df["swing_start_event"].cumsum()
 # -------------------------
 # Calculate Swing MET
 # event by event
 # -------------------------
-for event_id in df.loc[df["is_swing"], "swing_event_id"].unique():
+#for event_id in df.loc[df["is_swing"], "swing_event_id"].unique():
 
+for event_id in df.loc[df["is_swing_event"], "swing_event_id"].unique():
     mask = (
         (df["swing_event_id"] == event_id)
-        & df["is_swing"]
+        & df["is_swing_event"]
     )
 
     n_frames = mask.sum()
@@ -437,6 +466,25 @@ for event_id in df.loc[df["is_swing"], "swing_event_id"].unique():
         (1.225 * weight_kg)
     )
 
+    # Event frame range
+    event_indices = df.index[mask]
+
+    start_frame = event_indices[0]
+    end_frame = event_indices[-1]
+
+    #Frame ID
+
+
+    start_frame = df.loc[start_frame, "frame_id"]
+    end_frame = df.loc[end_frame, "frame_id"]
+
+    max_idx = ang_vel.idxmax()
+    max_frame_id = df.loc[max_idx, "frame_id"]
+
+    start_time = start_frame / fps
+    end_time = end_frame / fps
+    max_time = max_frame_id / fps
+
     # Assign same event-level MET
     # to frames belonging to this Swing Event
     df.loc[
@@ -445,6 +493,8 @@ for event_id in df.loc[df["is_swing"], "swing_event_id"].unique():
     ] = swing_met
     print(
         f"Event {event_id:3d}: "
+        f"Frame={start_frame:.0f}-{end_frame:.0f}, "
+        f"Time={start_time:.3f}-{end_time:.3f}s, "
         f"frames={n_frames:3d}, "
         f"duration={duration_s:.3f}s, "
         f"max={ang_vel.max():.1f}, "

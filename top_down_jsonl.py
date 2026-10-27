@@ -14,8 +14,8 @@ date = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_FOLDER = f"badminton_motion_analysis_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
-#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
+#INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-12-21"
+INPUT_PATH = r"C:\D\NCTU_CS\Thesis\Lab_Data\dataset\dataset\2026-04-09_19-13-28"
 input_name = Path(INPUT_PATH).name
 OUTPUT_FOLDER = f"badminton_motion_analysis_{input_name}_{date}"
 Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -502,14 +502,14 @@ def draw_top_trajectory_start_end(canvas, trajectory, color=(255, 255, 0)):
                 + 8 * abs(np.sin(i * 0.5))
             )
 
-            '''cv2.circle(
+            cv2.circle(
                 canvas,
                 p2,
                 #pulse,
                 6,
                 (0,0,255),
                 -1
-            )'''
+            )  #Red circle for jump point
 
             '''cv2.putText(
                 canvas,
@@ -552,7 +552,8 @@ def draw_top_trajectory_start_end(canvas, trajectory, color=(255, 255, 0)):
             canvas,
             end_pt,
             7,
-            (0, 0, 255),   # Red
+            #(0, 0, 255),   # Red
+            (255, 0, 255),  # Purple: End
             -1
         )
 
@@ -596,14 +597,26 @@ def draw_top_trajectory_start_end(canvas, trajectory, color=(255, 255, 0)):
             canvas,
             (w // 2 + 35, legend_y),
             7,
-            (0, 0, 255),
+            #(0, 0, 255),
+            (255, 0, 255),  # Purple: End
             -1
         )
 
         cv2.putText(
             canvas,
-            "End",
+            "Jump",
             (w // 2 + 50, legend_y + 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0,0,255),
+            1
+        )
+
+        cv2.putText(
+            canvas,
+            "End",
+            #(w // 2 + 50, legend_y + 5),
+            (w // 2 + 120, legend_y + 5),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (255, 255, 255),
@@ -1899,9 +1912,12 @@ def main():
 
             left_vz = left_v[2]
             right_vz = right_v[2]
-            player_v = np.nanmean(
-            np.vstack([left_v, right_v]),
-            axis=0)
+            if player_anchor == "middle":
+                player_v = np.nanmean(
+                np.vstack([left_v, right_v]),
+                axis=0)
+            elif player_anchor == "right_ankel":
+                player_v = right_v
 
             speed_mps = np.linalg.norm(player_v[:2])
             speed_kmh = speed_mps * 3.6
@@ -1955,6 +1971,9 @@ def main():
                 "vx_right_ankle": right_v[0],
                 "vy_right_ankle": right_v[1],
                 "vz_right_ankle": right_v[2],
+                "x_left_ankle": left_ankle[0],
+                "y_left_ankle": left_ankle[1],
+                "z_left_ankle": left_ankle[2],
             }
 
             if i == 0:
